@@ -455,3 +455,33 @@ No Immich API required.
 7. Lightroom Classic remains the master for final phone and camera versions.
 
 8. Immich remains the daily browsing, sharing, search, and recognition interface over temporary uploads plus final derivatives.
+
+## Implementation status
+
+The repository currently contains an MVP Lightroom Classic plugin under
+`lr-plugin/ImmichDerivativeSync.lrdevplugin`.
+
+Implemented:
+
+- Lightroom Classic SDK plugin scaffold with a Plug-in Extras menu item.
+- Plugin Manager settings for output folder, minimum rating, JPEG long edge, and
+  JPEG quality.
+- Manual `Sync Derivatives to Folder` command.
+- Rated-photo export planning for non-rejected, non-virtual catalog photos.
+- Stable derivative path generation using capture date, original base filename,
+  and Lightroom identifier.
+- Manifest-file sync state instead of SQLite for the first version, avoiding a
+  native dependency inside the plugin.
+- Orphan state marking while leaving derivative files in place.
+- Pure-Lua tests for path generation, filtering, state handling, and change
+  detection planning.
+- Makefile targets for linting, testing, and packaging.
+
+Still pending:
+
+- Manual runtime validation inside Lightroom Classic.
+- Hardening export behavior against Lightroom SDK edge cases.
+- Background sync, richer filtering, orphan review UI, and Immich API
+  integration.
+
+See `TODO.md` for the current implementation backlog.
