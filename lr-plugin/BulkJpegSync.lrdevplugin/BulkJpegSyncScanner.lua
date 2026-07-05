@@ -2,6 +2,7 @@ local Photo = require "BulkJpegSyncPhoto"
 
 local Scanner = {}
 local exportedStatus = "exported"
+local trustedCatalogSelection = "trustedCatalogSelection"
 
 local function maybeImport(name)
 	if type(import) ~= "function" then
@@ -46,7 +47,30 @@ function Scanner.matches(photo, config)
 	return rating >= config.minRating
 end
 
-function Scanner.plan(photos, state, config, pathGenerator, fileExists, progressScope)
+local function metadataMismatch(photo, config)
+	if photo.ratingMissing then
+		return "missing"
+	end
+	if Scanner.matches(photo, config) then
+		return nil
+	end
+
+	return "mismatched"
+end
+
+local function selected(photo, config, options)
+	if options and options[trustedCatalogSelection] then
+		if photo.isVirtualCopy and not config.includeVirtualCopies then
+			return false
+		end
+
+		return true
+	end
+
+	return Scanner.matches(photo, config)
+end
+
+function Scanner.plan(photos, state, config, pathGenerator, fileExists, progressScope, options)
 	local exports = {}
 	local orphans = {}
 	local seen = {}
@@ -57,6 +81,8 @@ function Scanner.plan(photos, state, config, pathGenerator, fileExists, progress
 		skipped = 0,
 		orphaned = 0,
 		ignored = 0,
+		metadataMissing = 0,
+		metadataMismatched = 0,
 	}
 
 	for index, handle in ipairs(photos) do
@@ -73,8 +99,16 @@ function Scanner.plan(photos, state, config, pathGenerator, fileExists, progress
 		local record = state.photos[photo.identifier]
 		seen[photo.identifier] = true
 
-		if Scanner.matches(photo, config) then
+		if selected(photo, config, options) then
 			stats.selected = stats.selected + 1
+			if options and options[trustedCatalogSelection] then
+				local mismatch = metadataMismatch(photo, config)
+				if mismatch == "missing" then
+					stats.metadataMissing = stats.metadataMissing + 1
+				elseif mismatch == "mismatched" then
+					stats.metadataMismatched = stats.metadataMismatched + 1
+				end
+			end
 			local outputPath = record and record.outputPath or pathGenerator(config.outputDirectory, photo)
 			local fingerprint = Photo.fingerprint(photo)
 			local needsExport = record == nil

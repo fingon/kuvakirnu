@@ -22,7 +22,7 @@ local function syncNow(properties)
 	saveProperties(properties)
 	refreshDerivedProperties(properties)
 	if properties.canSync then
-		SyncLauncher.runAsync()
+		SyncLauncher.runAsync(properties)
 	end
 end
 
@@ -234,6 +234,17 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 					viewFactory:static_text {
 						title = bind "lastRunCleanup",
 						width_in_chars = 34,
+					},
+				},
+				viewFactory:row {
+					spacing = viewFactory:control_spacing(),
+					viewFactory:static_text {
+						title = "Diagnostic",
+						width = LrView.share "labelWidth",
+					},
+					viewFactory:static_text {
+						title = bind "lastRunDiagnostic",
+						width_in_chars = 72,
 					},
 				},
 				viewFactory:row {

@@ -16,6 +16,8 @@ local State = require "BulkJpegSyncState"
 local Sync = {}
 
 local running = false
+local syncCanceledMessage = "sync canceled"
+local trustedCatalogSelectionOption = "trustedCatalogSelection"
 
 local function statePath()
 	return LrPathUtils.child(Config.pluginDataDirectory(), Config.stateFileName)
@@ -34,14 +36,14 @@ local function finish(progressScope)
 	running = false
 end
 
-local function updateLastRun(properties, stats, exportedCount, deletedCount, failedCount)
+local function updateLastRun(activeProperties, prefs, stats, exportedCount, deletedCount, failedCount)
 	local timestamp = now()
-	properties.lastRunAt = timestamp
-	properties.lastRunResults = Config.lastRunResults(stats, exportedCount)
-	properties.lastRunCleanup = Config.lastRunCleanup(stats, deletedCount, failedCount)
-	properties.lastRunDiagnostic = Config.lastRunDiagnostic(timestamp, stats, exportedCount, deletedCount, failedCount)
+	Config.updateLastRunProperties(prefs, timestamp, stats, exportedCount, deletedCount, failedCount)
+	if activeProperties and activeProperties ~= prefs then
+		Config.updateLastRunProperties(activeProperties, timestamp, stats, exportedCount, deletedCount, failedCount)
+	end
 	Logger.info("sync_completed", {
-		diagnostic = properties.lastRunDiagnostic,
+		diagnostic = prefs.lastRunDiagnostic,
 		candidates = stats.candidates,
 		selected = stats.selected,
 		exported = exportedCount,
@@ -50,21 +52,32 @@ local function updateLastRun(properties, stats, exportedCount, deletedCount, fai
 		deleted = deletedCount,
 		failed = failedCount,
 		ignored = stats.ignored,
+		metadata_missing = stats.metadataMissing or 0,
+		metadata_mismatched = stats.metadataMismatched or 0,
 	})
 end
 
-function Sync.run()
+function Sync.run(activeProperties)
 	if running then
 		return nil, "sync is already running"
 	end
 	running = true
 
-	local properties = LrPrefs.prefsForPlugin()
+	local prefs = LrPrefs.prefsForPlugin()
+	local properties = activeProperties or prefs
 	local config, configErr = Config.fromProperties(properties)
 	if not config then
 		running = false
 		return nil, configErr
 	end
+	Logger.info("sync_started", {
+		output = config.outputDirectory,
+		min_rating = config.minRating or 0,
+		include_unstarred = config.includeUnstarred,
+		include_virtual_copies = config.includeVirtualCopies,
+		long_edge_pixels = config.longEdgePixels,
+		jpeg_quality = config.jpegQuality,
+	})
 
 	local progressScope = LrProgressScope({ title = "Bulk JPEG Sync" })
 
@@ -77,7 +90,8 @@ function Sync.run()
 
 	if canceled(progressScope) then
 		finish(progressScope)
-		return nil, "sync canceled"
+		Logger.info("sync_canceled", { phase = "loading_state" })
+		return nil, syncCanceledMessage
 	end
 
 	progressScope:setCaption("Searching Lightroom catalog")
@@ -87,17 +101,35 @@ function Sync.run()
 		finish(progressScope)
 		return nil, photosErr
 	end
+	Logger.info("catalog_search_completed", {
+		candidates = #photos,
+		min_rating = config.minRating or 0,
+		include_unstarred = config.includeUnstarred,
+	})
 	if canceled(progressScope) then
 		finish(progressScope)
-		return nil, "sync canceled"
+		Logger.info("sync_canceled", { phase = "catalog_search" })
+		return nil, syncCanceledMessage
 	end
 
 	progressScope:setCaption("Planning JPEGs")
-	local plan, planErr = Scanner.plan(photos, state, config, Path.derivativePath, Exporter.fileExists, progressScope)
+	local plan, planErr = Scanner.plan(photos, state, config, Path.derivativePath, Exporter.fileExists, progressScope, {
+		[trustedCatalogSelectionOption] = true,
+	})
 	if not plan then
 		finish(progressScope)
 		return nil, planErr
 	end
+	Logger.info("planning_completed", {
+		candidates = plan.stats.candidates,
+		selected = plan.stats.selected,
+		exports = #plan.exports,
+		orphans = #plan.orphans,
+		skipped = plan.stats.skipped,
+		ignored = plan.stats.ignored,
+		metadata_missing = plan.stats.metadataMissing or 0,
+		metadata_mismatched = plan.stats.metadataMismatched or 0,
+	})
 	local exportedCount = 0
 	local failedCount = 0
 	local deletedCount = 0
@@ -106,7 +138,8 @@ function Sync.run()
 	for index, orphan in ipairs(plan.orphans) do
 		if canceled(progressScope) then
 			finish(progressScope)
-			return nil, "sync canceled"
+			Logger.info("sync_canceled", { phase = "deleting_orphans" })
+			return nil, syncCanceledMessage
 		end
 		if index % 100 == 0 then
 			progressScope:setCaption("Deleting orphans " .. tostring(index) .. " of " .. tostring(#plan.orphans))
@@ -131,12 +164,18 @@ function Sync.run()
 			State.markOrphaned(state, orphan, now())
 		end
 	end
+	Logger.info("cleanup_completed", {
+		orphaned = plan.stats.orphaned,
+		deleted = deletedCount,
+		failed = failedCount,
+	})
 
 	progressScope:setCaption("Exporting 0 of " .. tostring(#plan.exports))
 	for index, item in ipairs(plan.exports) do
 		if canceled(progressScope) then
 			finish(progressScope)
-			return nil, "sync canceled"
+			Logger.info("sync_canceled", { phase = "exporting" })
+			return nil, syncCanceledMessage
 		end
 		progressScope:setCaption("Exporting " .. tostring(index) .. " of " .. tostring(#plan.exports))
 		progressScope:setPortionComplete(index - 1, #plan.exports)
@@ -155,6 +194,11 @@ function Sync.run()
 			})
 		end
 	end
+	Logger.info("export_completed", {
+		planned = #plan.exports,
+		exported = exportedCount,
+		failed = failedCount,
+	})
 
 	progressScope:setCaption("Saving sync state")
 	local saveOk, saveErr = State.save(statePath(), state)
@@ -163,7 +207,7 @@ function Sync.run()
 		return nil, saveErr
 	end
 
-	updateLastRun(properties, plan.stats, exportedCount, deletedCount, failedCount)
+	updateLastRun(activeProperties, prefs, plan.stats, exportedCount, deletedCount, failedCount)
 	if failedCount > 0 then
 		LrDialogs.message(
 			"Bulk JPEG Sync completed with failures",

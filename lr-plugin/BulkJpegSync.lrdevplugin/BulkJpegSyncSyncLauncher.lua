@@ -6,9 +6,9 @@ local Sync = require "BulkJpegSyncSync"
 
 local SyncLauncher = {}
 
-function SyncLauncher.runAsync()
+function SyncLauncher.runAsync(properties)
 	LrTasks.startAsyncTask(function()
-		local ok, err = Sync.run()
+		local ok, err = Sync.run(properties)
 		if not ok then
 			Logger.error("sync_failed", { error = tostring(err) })
 			LrDialogs.message("Bulk JPEG Sync failed", tostring(err), "critical")

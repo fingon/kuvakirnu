@@ -34,6 +34,12 @@ local function assertPlanStats(actual, expected)
 	assertEqual(actual.skipped, expected.skipped, "skipped count differs")
 	assertEqual(actual.orphaned, expected.orphaned, "orphaned count differs")
 	assertEqual(actual.ignored, expected.ignored, "ignored count differs")
+	if expected.metadataMissing ~= nil then
+		assertEqual(actual.metadataMissing, expected.metadataMissing, "metadata missing count differs")
+	end
+	if expected.metadataMismatched ~= nil then
+		assertEqual(actual.metadataMismatched, expected.metadataMismatched, "metadata mismatch count differs")
+	end
 end
 
 local function withFakeImport(moduleName, module, fn)
@@ -201,6 +207,16 @@ function tests.photo_snapshot_handles_missing_path_and_filename_metadata()
 	assertEqual(snapshot.identifier, "local-1")
 	assertEqual(snapshot.sourcePath, "")
 	assertEqual(snapshot.fileName, "photo")
+	assertEqual(snapshot.ratingMissing, false)
+end
+
+function tests.photo_snapshot_marks_missing_rating_metadata()
+	local snapshot = Photo.snapshot(fakeLightroomPhoto({
+		localIdentifier = "local-1",
+	}, {}))
+
+	assertEqual(snapshot.rating, 0)
+	assertEqual(snapshot.ratingMissing, true)
 end
 
 function tests.photo_snapshot_derives_filename_from_source_path()
@@ -455,6 +471,48 @@ function tests.scanner_stats_count_selected_exports_without_skipping()
 	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 })
 end
 
+function tests.scanner_trusts_catalog_selection_when_rating_metadata_is_missing()
+	local config = { outputDirectory = "/out", minRating = 5, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local state = State.empty()
+	local photo = Photo.snapshot(fakeLightroomPhoto({
+		localIdentifier = "a",
+		path = "/photos/a.raw",
+	}, {}))
+	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
+		return false
+	end, nil, { trustedCatalogSelection = true })
+
+	assertEqual(#planned.exports, 1)
+	assertEqual(planned.exports[1].photo.identifier, "a")
+	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0, metadataMissing = 1, metadataMismatched = 0 })
+end
+
+function tests.scanner_trusted_catalog_selection_still_excludes_virtual_copies()
+	local config = { outputDirectory = "/out", minRating = 5, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local state = State.empty()
+	local planned = Scanner.plan({
+		{ identifier = "a", sourcePath = "a.raw", fileName = "a.raw", rating = 5, isRejected = false, isVirtualCopy = true },
+	}, state, config, Path.derivativePath, function()
+		return false
+	end, nil, { trustedCatalogSelection = true })
+
+	assertEqual(#planned.exports, 0)
+	assertPlanStats(planned.stats, { candidates = 1, selected = 0, skipped = 0, orphaned = 0, ignored = 1, metadataMissing = 0, metadataMismatched = 0 })
+end
+
+function tests.scanner_trusted_catalog_selection_counts_metadata_mismatches()
+	local config = { outputDirectory = "/out", minRating = 5, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local state = State.empty()
+	local planned = Scanner.plan({
+		{ identifier = "a", sourcePath = "a.raw", fileName = "a.raw", rating = 1, isRejected = false, isVirtualCopy = false },
+	}, state, config, Path.derivativePath, function()
+		return false
+	end, nil, { trustedCatalogSelection = true })
+
+	assertEqual(#planned.exports, 1)
+	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0, metadataMissing = 0, metadataMismatched = 1 })
+end
+
 function tests.config_defaults_are_visible()
 	local properties = {}
 	Config.ensureDefaults(properties)
@@ -535,8 +593,24 @@ function tests.config_formats_last_run_fields()
 	assertEqual(Config.lastRunCleanup(stats, 2, 1), "orphaned 2, deleted 2, failed 1")
 	assertEqual(
 		Config.lastRunDiagnostic("2026-07-05T10:11:12Z", stats, 1, 2, 1),
-		"2026-07-05T10:11:12Z candidates=5 selected=5 exported=1 skipped=4 orphaned=2 deleted=2 failed=1 ignored=1"
+		"2026-07-05T10:11:12Z candidates=5 selected=5 exported=1 skipped=4 orphaned=2 deleted=2 failed=1 ignored=1 metadata_missing=0 metadata_mismatched=0"
 	)
+end
+
+function tests.config_updates_last_run_properties()
+	local stats = { candidates = 5, selected = 4, skipped = 3, orphaned = 2, ignored = 1, metadataMissing = 6, metadataMismatched = 7 }
+	local properties = { outputDirectory = "/out", minRating = 3, includeUnstarred = false }
+
+	Config.updateLastRunProperties(properties, "2026-07-05T10:11:12Z", stats, 1, 2, 3)
+
+	assertEqual(properties.lastRunAt, "2026-07-05T10:11:12Z")
+	assertEqual(properties.lastRunResults, "candidates 5, selected 4, exported 1, skipped 3")
+	assertEqual(properties.lastRunCleanup, "orphaned 2, deleted 2, failed 3")
+	assertEqual(
+		properties.lastRunDiagnostic,
+		"2026-07-05T10:11:12Z candidates=5 selected=4 exported=1 skipped=3 orphaned=2 deleted=2 failed=3 ignored=1 metadata_missing=6 metadata_mismatched=7"
+	)
+	assertEqual(properties.canSync, true)
 end
 
 function tests.file_utils_move_reports_missing_lightroom_error()

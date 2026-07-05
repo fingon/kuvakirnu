@@ -49,7 +49,8 @@ function Photo.snapshot(photo)
 	local sourcePath = rawPath or ""
 	local sourcePathFileName = tostring(sourcePath):match("[^/\\]+$")
 	local fileName = firstPresent(rawFileName, formattedFileName, sourcePathFileName, "photo")
-	local rating = tonumber(firstPresent(raw(photo, "rating"), 0)) or 0
+	local rawRating = firstPresent(raw(photo, "rating"))
+	local rating = tonumber(firstPresent(rawRating, 0)) or 0
 
 	return {
 		handle = photo,
@@ -58,6 +59,7 @@ function Photo.snapshot(photo)
 		fileName = tostring(fileName),
 		captureTime = firstPresent(raw(photo, "dateTimeOriginal"), raw(photo, "captureTime"), formatted(photo, "dateTimeOriginal")),
 		rating = rating,
+		ratingMissing = rawRating == nil,
 		isRejected = raw(photo, "isRejected") == true or raw(photo, "pickStatus") == -1,
 		isVirtualCopy = raw(photo, "isVirtualCopy") == true,
 		copyName = firstPresent(raw(photo, "copyName"), formatted(photo, "copyName")),

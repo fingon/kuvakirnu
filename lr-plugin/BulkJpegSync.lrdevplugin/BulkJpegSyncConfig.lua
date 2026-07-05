@@ -132,7 +132,7 @@ end
 
 function Config.lastRunDiagnostic(timestamp, stats, exportedCount, deletedCount, failedCount)
 	return string.format(
-		"%s candidates=%d selected=%d exported=%d skipped=%d orphaned=%d deleted=%d failed=%d ignored=%d",
+		"%s candidates=%d selected=%d exported=%d skipped=%d orphaned=%d deleted=%d failed=%d ignored=%d metadata_missing=%d metadata_mismatched=%d",
 		timestamp,
 		stats.candidates,
 		stats.selected,
@@ -141,8 +141,18 @@ function Config.lastRunDiagnostic(timestamp, stats, exportedCount, deletedCount,
 		stats.orphaned,
 		deletedCount,
 		failedCount,
-		stats.ignored
+		stats.ignored,
+		stats.metadataMissing or 0,
+		stats.metadataMismatched or 0
 	)
+end
+
+function Config.updateLastRunProperties(properties, timestamp, stats, exportedCount, deletedCount, failedCount)
+	properties.lastRunAt = timestamp
+	properties.lastRunResults = Config.lastRunResults(stats, exportedCount)
+	properties.lastRunCleanup = Config.lastRunCleanup(stats, deletedCount, failedCount)
+	properties.lastRunDiagnostic = Config.lastRunDiagnostic(timestamp, stats, exportedCount, deletedCount, failedCount)
+	Config.refreshDerivedProperties(properties)
 end
 
 function Config.loadPreferencesIntoProperties(prefs, properties)
