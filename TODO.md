@@ -17,8 +17,6 @@ building this plugin.
 
 ## MVP hardening
 
-- Replace per-photo export sessions with batched export sessions once Lightroom
-  runtime behavior is confirmed.
 - Make state writes safe if Lightroom exits during a long run.
 - Add a visible error/status viewer instead of relying on the Lightroom log and
   manifest file.

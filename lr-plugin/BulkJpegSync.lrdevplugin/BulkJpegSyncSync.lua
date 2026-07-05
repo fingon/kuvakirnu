@@ -338,49 +338,75 @@ function Sync.run(activeProperties)
 		"Exporting 0 of " .. tostring(#plan.exports),
 		cleanupProgressEnd
 	)
-	for index, item in ipairs(plan.exports) do
+	local dateGroups = {}
+	local dateOrder = {}
+	for _, item in ipairs(plan.exports) do
+		local date = item.photo.captureTime or ""
+		if not dateGroups[date] then
+			dateGroups[date] = {}
+			dateOrder[#dateOrder + 1] = date
+		end
+		dateGroups[date][#dateGroups[date] + 1] = item
+	end
+	local overallIndex = 0
+	for _, date in ipairs(dateOrder) do
+		local items = dateGroups[date]
 		if canceled(progressScope) then
 			finish(progressScope)
 			Logger.info("sync_canceled", { phase = "exporting" })
 			return nil, syncCanceledMessage
 		end
+		local rangeEnd = overallIndex + #items
+		local dateLabel = ""
+		if date ~= "" then
+			dateLabel = " (" .. date .. ")"
+		end
 		setProgress(
 			progressScope,
 			"Exporting "
-				.. tostring(index)
+				.. tostring(overallIndex + 1)
+				.. "-"
+				.. tostring(rangeEnd)
 				.. " of "
 				.. tostring(#plan.exports)
-				.. ": "
-				.. tostring(item.photo.fileName),
+				.. dateLabel,
 			phaseProgress(
 				cleanupProgressEnd,
 				exportProgressEnd,
-				index - 1,
+				overallIndex,
 				#plan.exports
 			)
 		)
-		item.configExportSettingsVersion = config.exportSettingsVersion
-		item.configPluginVersionTimestamp = config.pluginVersionTimestamp
-		item.configOutputSettingsChangedAt = config.outputSettingsChangedAt
-		item.configOutputSettingsFingerprint = config.outputSettingsFingerprint
-		local exportOk, exportErr = Exporter.exportItems({ item }, config, nil)
-		if exportOk then
-			State.markExported(state, item, item.outputPath, now())
-			exportedCount = exportedCount + 1
-		else
-			State.markFailed(state, item, exportErr)
-			failedCount = failedCount + 1
-			Logger.error("photo_export_failed", {
-				photo = item.photo.identifier,
-				output = item.outputPath,
-				error = exportErr,
-			})
+		for _, item in ipairs(items) do
+			item.configExportSettingsVersion = config.exportSettingsVersion
+			item.configPluginVersionTimestamp = config.pluginVersionTimestamp
+			item.configOutputSettingsChangedAt = config.outputSettingsChangedAt
+			item.configOutputSettingsFingerprint =
+				config.outputSettingsFingerprint
 		end
+		local exportOk, exportErr = Exporter.exportItems(items, config, nil)
+		if exportOk then
+			for _, item in ipairs(items) do
+				State.markExported(state, item, item.outputPath, now())
+				exportedCount = exportedCount + 1
+			end
+		else
+			for _, item in ipairs(items) do
+				State.markFailed(state, item, exportErr)
+				failedCount = failedCount + 1
+				Logger.error("photo_export_failed", {
+					photo = item.photo.identifier,
+					output = item.outputPath,
+					error = exportErr,
+				})
+			end
+		end
+		overallIndex = rangeEnd
 		progressScope:setPortionComplete(
 			phaseProgress(
 				cleanupProgressEnd,
 				exportProgressEnd,
-				index,
+				overallIndex,
 				#plan.exports
 			),
 			progressTotal
