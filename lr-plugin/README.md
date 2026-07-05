@@ -60,6 +60,16 @@ The local tests cover pure Lua planning, path, manifest, and configuration
 behavior. Lightroom export behavior still needs manual validation inside
 Lightroom Classic.
 
+## Troubleshooting
+
+If Lightroom reports `Could not load toolkit script`, quit Lightroom Classic
+completely and reopen it after changing plugin files. Lightroom can cache plugin
+script layout between reloads.
+
+The plugin keeps its Lua modules as root-level toolkit scripts with names such
+as `ImmichDerivativeSyncConfig.lua`. Do not move them into a subdirectory unless
+the Lightroom loader setup is changed at the same time.
+
 ## Known MVP limits
 
 - No Immich API integration.

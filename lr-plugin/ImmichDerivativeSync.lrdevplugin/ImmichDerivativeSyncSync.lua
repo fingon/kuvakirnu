@@ -4,12 +4,12 @@ local LrPathUtils = import "LrPathUtils"
 local LrPrefs = import "LrPrefs"
 local LrProgressScope = import "LrProgressScope"
 
-local Config = require "ImmichDerivativeSync.Config"
-local Exporter = require "ImmichDerivativeSync.Exporter"
-local Logger = require "ImmichDerivativeSync.Logger"
-local Path = require "ImmichDerivativeSync.Path"
-local Scanner = require "ImmichDerivativeSync.Scanner"
-local State = require "ImmichDerivativeSync.State"
+local Config = require "ImmichDerivativeSyncConfig"
+local Exporter = require "ImmichDerivativeSyncExporter"
+local Logger = require "ImmichDerivativeSyncLogger"
+local Path = require "ImmichDerivativeSyncPath"
+local Scanner = require "ImmichDerivativeSyncScanner"
+local State = require "ImmichDerivativeSyncState"
 
 local Sync = {}
 

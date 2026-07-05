@@ -1,8 +1,8 @@
 local LrTasks = import "LrTasks"
 local LrDialogs = import "LrDialogs"
 
-local Sync = require "ImmichDerivativeSync.Sync"
-local Logger = require "ImmichDerivativeSync.Logger"
+local Sync = require "ImmichDerivativeSyncSync"
+local Logger = require "ImmichDerivativeSyncLogger"
 
 LrTasks.startAsyncTask(function()
 	local ok, err = Sync.run()

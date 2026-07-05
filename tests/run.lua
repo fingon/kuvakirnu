@@ -1,9 +1,9 @@
-package.path = "lr-plugin/ImmichDerivativeSync.lrdevplugin/?.lua;lr-plugin/ImmichDerivativeSync.lrdevplugin/?/init.lua;lr-plugin/ImmichDerivativeSync.lrdevplugin/?.lua;tests/?.lua;" .. package.path
+package.path = "lr-plugin/ImmichDerivativeSync.lrdevplugin/?.lua;tests/?.lua;" .. package.path
 
-local Config = require "ImmichDerivativeSync.Config"
-local Path = require "ImmichDerivativeSync.Path"
-local Scanner = require "ImmichDerivativeSync.Scanner"
-local State = require "ImmichDerivativeSync.State"
+local Config = require "ImmichDerivativeSyncConfig"
+local Path = require "ImmichDerivativeSyncPath"
+local Scanner = require "ImmichDerivativeSyncScanner"
+local State = require "ImmichDerivativeSyncState"
 
 local tests = {}
 

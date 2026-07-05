@@ -6,6 +6,8 @@ Remaining work for the Lightroom Classic-to-Immich derivative sync plugin.
 
 - Validate the plugin in Lightroom Classic on macOS.
 - Confirm `Info.lua` metadata and menu registration load without SDK warnings.
+- Confirm the root-level toolkit script layout fixes `Could not load toolkit
+  script` errors after a full Lightroom restart.
 - Confirm the Plug-in Manager settings panel persists values correctly.
 - Confirm `catalog:getAllPhotos()` and the metadata keys used in
   `Photo.snapshot` return the expected identifiers, capture timestamps, ratings,

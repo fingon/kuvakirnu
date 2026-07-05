@@ -1,4 +1,4 @@
-local Photo = require "ImmichDerivativeSync.Photo"
+local Photo = require "ImmichDerivativeSyncPhoto"
 
 local Scanner = {}
 

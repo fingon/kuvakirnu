@@ -4,7 +4,7 @@ local LrFunctionContext = import "LrFunctionContext"
 local LrPathUtils = import "LrPathUtils"
 local LrView = import "LrView"
 
-local Config = require "ImmichDerivativeSync.Config"
+local Config = require "ImmichDerivativeSyncConfig"
 
 local function browseForOutputDirectory(properties)
 	local path = LrDialogs.runOpenPanel({

@@ -1,4 +1,4 @@
-local Path = require "ImmichDerivativeSync.Path"
+local Path = require "ImmichDerivativeSyncPath"
 
 local Exporter = {}
 
