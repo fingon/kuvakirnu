@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    runs-on: avrea-ubuntu-latest-1-vcpu
     steps:
       - uses: actions/checkout@v4
 
