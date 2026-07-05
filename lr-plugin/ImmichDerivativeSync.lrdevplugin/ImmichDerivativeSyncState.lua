@@ -1,3 +1,5 @@
+local FileUtils = require "ImmichDerivativeSyncFileUtils"
+
 local State = {}
 
 local function maybeImport(name)
@@ -130,9 +132,9 @@ function State.save(path, state)
 	file:write("\n")
 	file:close()
 
-	local renamed, renameErr = os.rename(tempPath, path)
-	if not renamed then
-		return nil, "failed to replace state file: " .. tostring(renameErr)
+	local moved, moveErr = FileUtils.moveFile(tempPath, path)
+	if not moved then
+		return nil, "failed to replace state file: " .. tostring(moveErr)
 	end
 
 	return true
