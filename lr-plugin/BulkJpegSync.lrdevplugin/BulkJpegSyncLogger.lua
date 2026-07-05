@@ -1,3 +1,5 @@
+local Config = require "BulkJpegSyncConfig"
+
 local Logger = {}
 
 local function maybeImport(name)
@@ -24,12 +26,53 @@ local function formatMetadata(metadata)
 	return table.concat(parts, " ")
 end
 
+local function ensureDirectory(path)
+	local directory = tostring(path):match("^(.*)[/\\][^/\\]+$") or "."
+	if directory == "." then
+		return true
+	end
+
+	local LrFileUtils = maybeImport("LrFileUtils")
+	if LrFileUtils and LrFileUtils.createAllDirectories then
+		local ok = LrFileUtils.createAllDirectories(directory)
+		if ok == false then
+			return false
+		end
+	end
+
+	return true
+end
+
+local function appendLogFile(line)
+	local path = Config.logFilePath()
+	if not ensureDirectory(path) then
+		io.stderr:write("[error] log_directory_unavailable path=" .. tostring(path) .. "\n")
+		return
+	end
+
+	local file, openErr = io.open(path, "a")
+	if not file then
+		io.stderr:write("[error] log_file_unavailable path=" .. tostring(path) .. " error=" .. tostring(openErr) .. "\n")
+		return
+	end
+
+	local wrote, writeErr = file:write(os.date("!%Y-%m-%dT%H:%M:%SZ"), " ", line, "\n")
+	local closed, closeErr = file:close()
+	if not wrote then
+		io.stderr:write("[error] log_file_write_failed path=" .. tostring(path) .. " error=" .. tostring(writeErr) .. "\n")
+	end
+	if not closed then
+		io.stderr:write("[error] log_file_close_failed path=" .. tostring(path) .. " error=" .. tostring(closeErr) .. "\n")
+	end
+end
+
 local function log(level, message, metadata)
-	local line = message
+	local line = "[" .. level .. "] " .. message
 	local suffix = formatMetadata(metadata)
 	if suffix ~= "" then
 		line = line .. " " .. suffix
 	end
+	appendLogFile(line)
 
 	local LrLogger = maybeImport("LrLogger")
 	if LrLogger then
@@ -41,7 +84,7 @@ local function log(level, message, metadata)
 		end
 	end
 
-	io.stderr:write("[" .. level .. "] " .. line .. "\n")
+	io.stderr:write(line .. "\n")
 end
 
 function Logger.debug(message, metadata)

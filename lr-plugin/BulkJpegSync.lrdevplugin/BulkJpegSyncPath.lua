@@ -43,12 +43,8 @@ local function splitBaseName(fileName)
 end
 
 local function dateParts(captureTime)
-	if type(captureTime) == "number" then
-		return os.date("%Y", captureTime), os.date("%Y-%m-%d", captureTime)
-	end
-
 	if type(captureTime) == "string" then
-		local year, month, day = captureTime:match("^(%d%d%d%d)[-:/](%d%d)[-:/](%d%d)")
+		local year, month, day = captureTime:match("^(%d%d%d%d)%-(%d%d)%-(%d%d)")
 		if year and month and day then
 			return year, year .. "-" .. month .. "-" .. day
 		end

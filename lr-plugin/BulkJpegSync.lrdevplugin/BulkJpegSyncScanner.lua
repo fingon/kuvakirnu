@@ -70,6 +70,17 @@ local function selected(photo, config, options)
 	return Scanner.matches(photo, config)
 end
 
+local function progressDone(options, index, total)
+	if not options or not options.progressStart or not options.progressEnd or not options.progressTotal then
+		return index, total
+	end
+	if total <= 0 then
+		return options.progressEnd, options.progressTotal
+	end
+
+	return options.progressStart + math.floor((options.progressEnd - options.progressStart) * index / total), options.progressTotal
+end
+
 function Scanner.plan(photos, state, config, pathGenerator, fileExists, progressScope, options)
 	local exports = {}
 	local orphans = {}
@@ -83,6 +94,7 @@ function Scanner.plan(photos, state, config, pathGenerator, fileExists, progress
 		ignored = 0,
 		metadataMissing = 0,
 		metadataMismatched = 0,
+		captureDateMissing = 0,
 	}
 
 	for index, handle in ipairs(photos) do
@@ -90,14 +102,18 @@ function Scanner.plan(photos, state, config, pathGenerator, fileExists, progress
 			return nil, "sync canceled"
 		end
 		if progressScope and index % 100 == 0 then
+			local done, total = progressDone(options, index, totalPhotos)
 			progressScope:setCaption("Planning derivatives " .. tostring(index) .. " of " .. tostring(totalPhotos))
-			progressScope:setPortionComplete(index, totalPhotos)
+			progressScope:setPortionComplete(done, total)
 			yield()
 		end
 
 		local photo = handle.identifier and handle or Photo.snapshot(handle)
 		local record = state.photos[photo.identifier]
 		seen[photo.identifier] = true
+		if photo.captureDateMissing then
+			stats.captureDateMissing = stats.captureDateMissing + 1
+		end
 
 		if selected(photo, config, options) then
 			stats.selected = stats.selected + 1
@@ -149,8 +165,9 @@ function Scanner.plan(photos, state, config, pathGenerator, fileExists, progress
 	end
 
 	if progressScope then
+		local done, total = progressDone(options, totalPhotos, totalPhotos)
 		progressScope:setCaption("Planning derivatives " .. tostring(totalPhotos) .. " of " .. tostring(totalPhotos))
-		progressScope:setPortionComplete(totalPhotos, totalPhotos)
+		progressScope:setPortionComplete(done, total)
 	end
 
 	return {

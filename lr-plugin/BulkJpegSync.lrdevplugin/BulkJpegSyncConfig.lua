@@ -1,6 +1,7 @@
 local Config = {}
 
 Config.stateFileName = "sync-state.lua"
+Config.logFileName = "bulk-jpeg-sync.log"
 Config.exportSettingsVersion = 1
 Config.defaultMinRating = 3
 Config.defaultLongEdgePixels = 3200
@@ -71,6 +72,15 @@ function Config.pluginDataDirectory()
 	return "."
 end
 
+function Config.logFilePath()
+	local LrPathUtils = maybeImport("LrPathUtils")
+	if LrPathUtils and LrPathUtils.child then
+		return LrPathUtils.child(Config.pluginDataDirectory(), Config.logFileName)
+	end
+
+	return Config.pluginDataDirectory() .. "/" .. Config.logFileName
+end
+
 function Config.ensureDefaults(properties)
 	if properties.outputDirectory == nil then
 		properties.outputDirectory = ""
@@ -109,6 +119,7 @@ function Config.refreshDerivedProperties(properties)
 	properties.ratingSummary = Config.ratingSummary(properties)
 	properties.canSync = Config.canSync(properties)
 	properties.syncAvailabilitySummary = Config.syncAvailabilitySummary(properties)
+	properties.logFilePath = Config.logFilePath()
 end
 
 function Config.lastRunResults(stats, exportedCount)
@@ -132,7 +143,7 @@ end
 
 function Config.lastRunDiagnostic(timestamp, stats, exportedCount, deletedCount, failedCount)
 	return string.format(
-		"%s candidates=%d selected=%d exported=%d skipped=%d orphaned=%d deleted=%d failed=%d ignored=%d metadata_missing=%d metadata_mismatched=%d",
+		"%s candidates=%d selected=%d exported=%d skipped=%d orphaned=%d deleted=%d failed=%d ignored=%d metadata_missing=%d metadata_mismatched=%d capture_date_missing=%d",
 		timestamp,
 		stats.candidates,
 		stats.selected,
@@ -143,7 +154,8 @@ function Config.lastRunDiagnostic(timestamp, stats, exportedCount, deletedCount,
 		failedCount,
 		stats.ignored,
 		stats.metadataMissing or 0,
-		stats.metadataMismatched or 0
+		stats.metadataMismatched or 0,
+		stats.captureDateMissing or 0
 	)
 end
 

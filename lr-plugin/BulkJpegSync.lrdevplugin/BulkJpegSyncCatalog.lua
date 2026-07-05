@@ -1,6 +1,24 @@
 local Catalog = {}
 
 local rejectedPickValue = -1
+local rawMetadataKeys = {
+	"uuid",
+	"path",
+	"rating",
+	"pickStatus",
+	"isVirtualCopy",
+	"dateTimeOriginalISO8601",
+	"dateTimeISO8601",
+	"dateTimeDigitizedISO8601",
+	"dateTimeOriginal",
+	"dateTime",
+	"dateTimeDigitized",
+	"lastEditTime",
+}
+local formattedMetadataKeys = {
+	"fileName",
+	"copyName",
+}
 
 local function ratingCriterion(operation, value)
 	return {
@@ -57,6 +75,28 @@ function Catalog.findCandidates(catalog, config)
 	})
 
 	return photos or {}
+end
+
+function Catalog.batchMetadata(catalog, photos)
+	if not catalog or not catalog.batchGetRawMetadata or not catalog.batchGetFormattedMetadata then
+		return nil, "Lightroom batch metadata is unavailable"
+	end
+
+	local rawMetadata = catalog:batchGetRawMetadata(photos, rawMetadataKeys) or {}
+	local formattedMetadata = catalog:batchGetFormattedMetadata(photos, formattedMetadataKeys) or {}
+
+	return {
+		raw = rawMetadata,
+		formatted = formattedMetadata,
+	}
+end
+
+function Catalog.rawMetadataKeys()
+	return rawMetadataKeys
+end
+
+function Catalog.formattedMetadataKeys()
+	return formattedMetadataKeys
 end
 
 return Catalog

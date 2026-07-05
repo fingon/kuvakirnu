@@ -274,6 +274,16 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 						title = LrPathUtils.child(Config.pluginDataDirectory(), Config.stateFileName),
 					},
 				},
+				viewFactory:row {
+					spacing = viewFactory:control_spacing(),
+					viewFactory:static_text {
+						title = "Log file",
+						width = LrView.share "labelWidth",
+					},
+					viewFactory:static_text {
+						title = bind "logFilePath",
+					},
+				},
 			},
 		},
 	}

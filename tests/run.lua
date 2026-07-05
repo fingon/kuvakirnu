@@ -3,6 +3,7 @@ package.path = "lr-plugin/BulkJpegSync.lrdevplugin/?.lua;tests/?.lua;" .. packag
 local Catalog = require "BulkJpegSyncCatalog"
 local Config = require "BulkJpegSyncConfig"
 local FileUtils = require "BulkJpegSyncFileUtils"
+local Logger = require "BulkJpegSyncLogger"
 local Path = require "BulkJpegSyncPath"
 local Photo = require "BulkJpegSyncPhoto"
 local Scanner = require "BulkJpegSyncScanner"
@@ -40,6 +41,9 @@ local function assertPlanStats(actual, expected)
 	if expected.metadataMismatched ~= nil then
 		assertEqual(actual.metadataMismatched, expected.metadataMismatched, "metadata mismatch count differs")
 	end
+	if expected.captureDateMissing ~= nil then
+		assertEqual(actual.captureDateMissing, expected.captureDateMissing, "capture date missing count differs")
+	end
 end
 
 local function withFakeImport(moduleName, module, fn)
@@ -47,6 +51,24 @@ local function withFakeImport(moduleName, module, fn)
 	_G.import = function(name)
 		if name == moduleName then
 			return module
+		end
+		error("unexpected import: " .. tostring(name))
+	end
+
+	local results = { pcall(fn) }
+	_G.import = previousImport
+	if not results[1] then
+		error(results[2], 2)
+	end
+
+	return results[2], results[3]
+end
+
+local function withFakeImports(modules, fn)
+	local previousImport = _G.import
+	_G.import = function(name)
+		if modules[name] then
+			return modules[name]
 		end
 		error("unexpected import: " .. tostring(name))
 	end
@@ -102,6 +124,16 @@ local function fakeLightroomPhoto(rawMetadata, formattedMetadata)
 	}
 end
 
+local function containsValue(values, expected)
+	for _, value in ipairs(values) do
+		if value == expected then
+			return true
+		end
+	end
+
+	return false
+end
+
 function tests.catalog_search_description_filters_threshold_and_rejected()
 	local desc = Catalog.searchDescription({ minRating = 4, includeUnstarred = false })
 
@@ -151,6 +183,39 @@ function tests.catalog_find_candidates_uses_find_photos()
 	assertEqual(photos[1], "photo")
 	assertEqual(received[2].criteria, "rating")
 	assertEqual(received[2].value, 5)
+end
+
+function tests.catalog_batch_metadata_uses_documented_key_sets()
+	local rawKeys = nil
+	local formattedKeys = nil
+	local photos = { "photo" }
+	local catalog = {
+		batchGetRawMetadata = function(_, receivedPhotos, keys)
+			assertEqual(receivedPhotos, photos)
+			rawKeys = keys
+			return { photo = { rating = 5 } }
+		end,
+		batchGetFormattedMetadata = function(_, receivedPhotos, keys)
+			assertEqual(receivedPhotos, photos)
+			formattedKeys = keys
+			return { photo = { fileName = "a.raw" } }
+		end,
+	}
+
+	local metadata, err = Catalog.batchMetadata(catalog, photos)
+
+	assertTrue(metadata, err)
+	assertEqual(metadata.raw.photo.rating, 5)
+	assertEqual(metadata.formatted.photo.fileName, "a.raw")
+	assertTrue(containsValue(rawKeys, "rating"))
+	assertTrue(containsValue(rawKeys, "dateTimeOriginalISO8601"))
+	assertTrue(not containsValue(rawKeys, "copyName"))
+	assertTrue(not containsValue(rawKeys, "copyNumber"))
+	assertTrue(not containsValue(rawKeys, "lastUpdated"))
+	assertTrue(not containsValue(rawKeys, "lastImportTime"))
+	assertTrue(containsValue(formattedKeys, "fileName"))
+	assertTrue(containsValue(formattedKeys, "copyName"))
+	assertTrue(not containsValue(formattedKeys, "dateTimeOriginal"))
 end
 
 function tests.path_generation_is_stable_and_sanitized()
@@ -217,6 +282,72 @@ function tests.photo_snapshot_marks_missing_rating_metadata()
 
 	assertEqual(snapshot.rating, 0)
 	assertEqual(snapshot.ratingMissing, true)
+end
+
+function tests.photo_snapshot_prefers_iso8601_capture_date()
+	local snapshot = Photo.snapshotFromMetadata(fakeLightroomPhoto({}), {
+		localIdentifier = "local-1",
+		dateTimeOriginalISO8601 = "2025-09-03T10:11:12",
+		dateTimeOriginal = 123,
+	}, {})
+
+	assertEqual(snapshot.captureTime, "2025-09-03")
+	assertEqual(snapshot.captureDateMissing, false)
+	assertEqual(snapshot.captureDateSource, "dateTimeOriginalISO8601")
+end
+
+function tests.photo_snapshot_converts_lightroom_timestamp_with_lrdate()
+	withFakeImport("LrDate", {
+		timeToIsoDate = function(value)
+			assertEqual(value, 123)
+			return "2024-08-02T03:04:05"
+		end,
+	}, function()
+		local snapshot = Photo.snapshotFromMetadata(fakeLightroomPhoto({}), {
+			localIdentifier = "local-1",
+			dateTimeOriginal = 123,
+		}, {})
+
+		assertEqual(snapshot.captureTime, "2024-08-02")
+		assertEqual(snapshot.captureDateMissing, false)
+		assertEqual(snapshot.captureDateSource, "dateTimeOriginal")
+	end)
+end
+
+function tests.photo_snapshot_ignores_undocumented_capture_time_key()
+	local snapshot = Photo.snapshotFromMetadata(fakeLightroomPhoto({}), {
+		localIdentifier = "local-1",
+		captureTime = "2025-09-03T10:11:12",
+	}, {})
+
+	assertNil(snapshot.captureTime)
+	assertEqual(snapshot.captureDateMissing, true)
+end
+
+function tests.photo_snapshot_from_metadata_does_not_call_per_photo_getters()
+	local photo = {
+		localIdentifier = "local-1",
+		getRawMetadata = function()
+			error("unexpected raw metadata call")
+		end,
+		getFormattedMetadata = function()
+			error("unexpected formatted metadata call")
+		end,
+	}
+
+	local snapshot = Photo.snapshotFromMetadata(photo, {
+		uuid = "uuid-1",
+		path = "/photos/a.raw",
+		rating = 5,
+		dateTimeOriginalISO8601 = "2025-09-03T10:11:12",
+	}, {
+		fileName = "a.raw",
+	})
+
+	assertEqual(snapshot.identifier, "uuid-1")
+	assertEqual(snapshot.fileName, "a.raw")
+	assertEqual(snapshot.rating, 5)
+	assertEqual(snapshot.captureTime, "2025-09-03")
 end
 
 function tests.photo_snapshot_derives_filename_from_source_path()
@@ -484,7 +615,7 @@ function tests.scanner_trusts_catalog_selection_when_rating_metadata_is_missing(
 
 	assertEqual(#planned.exports, 1)
 	assertEqual(planned.exports[1].photo.identifier, "a")
-	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0, metadataMissing = 1, metadataMismatched = 0 })
+	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0, metadataMissing = 1, metadataMismatched = 0, captureDateMissing = 1 })
 end
 
 function tests.scanner_trusted_catalog_selection_still_excludes_virtual_copies()
@@ -497,7 +628,7 @@ function tests.scanner_trusted_catalog_selection_still_excludes_virtual_copies()
 	end, nil, { trustedCatalogSelection = true })
 
 	assertEqual(#planned.exports, 0)
-	assertPlanStats(planned.stats, { candidates = 1, selected = 0, skipped = 0, orphaned = 0, ignored = 1, metadataMissing = 0, metadataMismatched = 0 })
+	assertPlanStats(planned.stats, { candidates = 1, selected = 0, skipped = 0, orphaned = 0, ignored = 1, metadataMissing = 0, metadataMismatched = 0, captureDateMissing = 0 })
 end
 
 function tests.scanner_trusted_catalog_selection_counts_metadata_mismatches()
@@ -510,7 +641,7 @@ function tests.scanner_trusted_catalog_selection_counts_metadata_mismatches()
 	end, nil, { trustedCatalogSelection = true })
 
 	assertEqual(#planned.exports, 1)
-	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0, metadataMissing = 0, metadataMismatched = 1 })
+	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0, metadataMissing = 0, metadataMismatched = 1, captureDateMissing = 0 })
 end
 
 function tests.config_defaults_are_visible()
@@ -593,12 +724,12 @@ function tests.config_formats_last_run_fields()
 	assertEqual(Config.lastRunCleanup(stats, 2, 1), "orphaned 2, deleted 2, failed 1")
 	assertEqual(
 		Config.lastRunDiagnostic("2026-07-05T10:11:12Z", stats, 1, 2, 1),
-		"2026-07-05T10:11:12Z candidates=5 selected=5 exported=1 skipped=4 orphaned=2 deleted=2 failed=1 ignored=1 metadata_missing=0 metadata_mismatched=0"
+		"2026-07-05T10:11:12Z candidates=5 selected=5 exported=1 skipped=4 orphaned=2 deleted=2 failed=1 ignored=1 metadata_missing=0 metadata_mismatched=0 capture_date_missing=0"
 	)
 end
 
 function tests.config_updates_last_run_properties()
-	local stats = { candidates = 5, selected = 4, skipped = 3, orphaned = 2, ignored = 1, metadataMissing = 6, metadataMismatched = 7 }
+	local stats = { candidates = 5, selected = 4, skipped = 3, orphaned = 2, ignored = 1, metadataMissing = 6, metadataMismatched = 7, captureDateMissing = 8 }
 	local properties = { outputDirectory = "/out", minRating = 3, includeUnstarred = false }
 
 	Config.updateLastRunProperties(properties, "2026-07-05T10:11:12Z", stats, 1, 2, 3)
@@ -608,9 +739,50 @@ function tests.config_updates_last_run_properties()
 	assertEqual(properties.lastRunCleanup, "orphaned 2, deleted 2, failed 3")
 	assertEqual(
 		properties.lastRunDiagnostic,
-		"2026-07-05T10:11:12Z candidates=5 selected=4 exported=1 skipped=3 orphaned=2 deleted=2 failed=3 ignored=1 metadata_missing=6 metadata_mismatched=7"
+		"2026-07-05T10:11:12Z candidates=5 selected=4 exported=1 skipped=3 orphaned=2 deleted=2 failed=3 ignored=1 metadata_missing=6 metadata_mismatched=7 capture_date_missing=8"
 	)
 	assertEqual(properties.canSync, true)
+end
+
+function tests.logger_writes_plugin_owned_log_file()
+	local path = os.tmpname()
+	os.remove(path)
+	withFakeImports({
+		LrFileUtils = {
+			createAllDirectories = function(directory)
+				return os.execute("mkdir -p " .. directory)
+			end,
+		},
+		LrPathUtils = {
+			getStandardFilePath = function()
+				return path
+			end,
+			child = function(parent, child)
+				return parent .. "/" .. child
+			end,
+		},
+		LrLogger = function()
+			return {
+				enable = function()
+				end,
+				info = function()
+				end,
+			}
+		end,
+	}, function()
+		Logger.info("test_event", { photo = "abc" })
+	end)
+
+	local file = io.open(path .. "/fi.iki.fingon.bulk-jpeg-sync/bulk-jpeg-sync.log", "r")
+	assertTrue(file, "expected plugin log file")
+	local contents = file:read("*a")
+	file:close()
+
+	assertTrue(contents:match("test_event") ~= nil)
+	assertTrue(contents:match("photo=abc") ~= nil)
+	os.remove(path .. "/fi.iki.fingon.bulk-jpeg-sync/bulk-jpeg-sync.log")
+	os.remove(path .. "/fi.iki.fingon.bulk-jpeg-sync")
+	os.remove(path)
 end
 
 function tests.file_utils_move_reports_missing_lightroom_error()
