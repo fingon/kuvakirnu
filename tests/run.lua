@@ -1445,7 +1445,7 @@ function tests.config_formats_last_run_fields()
 	)
 	assertEqual(
 		Config.lastRunDiagnostic("2026-07-05T10:11:12Z", stats, 1, 2, 1),
-		"2026-07-05T10:11:12Z candidates=5 selected=5 exported=1 skipped=4 orphaned=2 deleted=2 failed=1 ignored=1 metadata_missing=0 metadata_mismatched=0 capture_date_missing=0"
+		"2026-07-05T10:11:12Z candidates=5 selected=5 exported=1 skipped=4 orphaned=2 deleted=2 failed=1 ignored=1 videos_skipped=0 metadata_missing=0 metadata_mismatched=0 capture_date_missing=0"
 	)
 end
 
@@ -1480,7 +1480,7 @@ function tests.config_updates_last_run_properties()
 	assertEqual(properties.lastRunCleanup, "orphaned 2, deleted 2, failed 3")
 	assertEqual(
 		properties.lastRunDiagnostic,
-		"2026-07-05T10:11:12Z candidates=5 selected=4 exported=1 skipped=3 orphaned=2 deleted=2 failed=3 ignored=1 metadata_missing=6 metadata_mismatched=7 capture_date_missing=8"
+		"2026-07-05T10:11:12Z candidates=5 selected=4 exported=1 skipped=3 orphaned=2 deleted=2 failed=3 ignored=1 videos_skipped=0 metadata_missing=6 metadata_mismatched=7 capture_date_missing=8"
 	)
 	assertEqual(properties.canSync, true)
 end
