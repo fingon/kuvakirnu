@@ -1,17 +1,16 @@
 # kuvakameli
 
-Lightroom Classic-to-Immich derivative sync tooling.
+Bulk JPEG export sync tooling for Lightroom Classic.
 
-The current implementation is a Lightroom Classic SDK plugin that exports JPEG
-derivatives from Lightroom Classic into a stable folder tree. Immich should index
-that folder as an External Library. RAW files and other archival originals stay
-in Lightroom Classic storage.
+The current implementation is a Lightroom Classic SDK plugin that exports
+selected JPEG derivatives from Lightroom Classic into a stable folder tree. RAW
+files and other archival originals stay in Lightroom Classic storage.
 
 ## Repository layout
 
-- `doc/Design - Lightroom-to-Immich Derivative Sync Plugin.md`: product and
+- `doc/Design - Bulk JPEG Sync Lightroom Plugin.md`: product and
   architecture design.
-- `lr-plugin/ImmichDerivativeSync.lrdevplugin`: Lightroom Classic plugin.
+- `lr-plugin/BulkJpegSync.lrdevplugin`: Lightroom Classic plugin.
 - `tests`: pure-Lua tests for plugin logic that can run outside Lightroom.
 - `TODO.md`: remaining plugin work and known validation gaps.
 
@@ -25,20 +24,18 @@ make test
 make build
 ```
 
-`make build` creates `dist/ImmichDerivativeSync.lrplugin.zip`.
+`make build` creates `dist/BulkJpegSync.lrplugin.zip`.
 
-`prek run --all-files` is expected for repositories with pre-commit
-configuration, but this repository currently has no `prek.toml` or
-`.pre-commit-config.yaml`.
+Run `prek run --all-files` for the repository pre-commit checks.
 
 ## Lightroom install
 
 1. Open Lightroom Classic.
 2. Open `File > Plug-in Manager`.
 3. Click `Add`.
-4. Select `lr-plugin/ImmichDerivativeSync.lrdevplugin`.
+4. Select `lr-plugin/BulkJpegSync.lrdevplugin`.
 5. Configure the output directory and export settings.
-6. Run `Library > Plug-in Extras > Sync Derivatives to Folder`.
+6. Run `Library > Plug-in Extras > Sync JPEGs to Folder`.
 
-Point Immich External Library scanning at the configured output directory or at a
-synced copy of it.
+Point a downstream tool, gallery, file sync, or photo service at the configured
+output directory or at a synced copy of it.

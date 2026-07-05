@@ -4,12 +4,14 @@ local LrPathUtils = import "LrPathUtils"
 local LrPrefs = import "LrPrefs"
 local LrProgressScope = import "LrProgressScope"
 
-local Config = require "ImmichDerivativeSyncConfig"
-local Exporter = require "ImmichDerivativeSyncExporter"
-local Logger = require "ImmichDerivativeSyncLogger"
-local Path = require "ImmichDerivativeSyncPath"
-local Scanner = require "ImmichDerivativeSyncScanner"
-local State = require "ImmichDerivativeSyncState"
+local Catalog = require "BulkJpegSyncCatalog"
+local Config = require "BulkJpegSyncConfig"
+local Exporter = require "BulkJpegSyncExporter"
+local FileUtils = require "BulkJpegSyncFileUtils"
+local Logger = require "BulkJpegSyncLogger"
+local Path = require "BulkJpegSyncPath"
+local Scanner = require "BulkJpegSyncScanner"
+local State = require "BulkJpegSyncState"
 
 local Sync = {}
 
@@ -17,10 +19,6 @@ local running = false
 
 local function statePath()
 	return LrPathUtils.child(Config.pluginDataDirectory(), Config.stateFileName)
-end
-
-local function catalogPhotos(catalog)
-	return catalog:getAllPhotos() or {}
 end
 
 local function now()
@@ -36,18 +34,23 @@ local function finish(progressScope)
 	running = false
 end
 
-local function updateLastRun(properties, stats, exportedCount, orphanCount, failedCount)
-	properties.lastRunSummary = string.format(
-		"%s scanned=%d selected=%d exported=%d skipped=%d orphaned=%d failed=%d ignored=%d",
-		now(),
-		stats.scanned,
-		stats.selected,
-		exportedCount,
-		stats.skipped,
-		orphanCount,
-		failedCount,
-		stats.ignored
-	)
+local function updateLastRun(properties, stats, exportedCount, deletedCount, failedCount)
+	local timestamp = now()
+	properties.lastRunAt = timestamp
+	properties.lastRunResults = Config.lastRunResults(stats, exportedCount)
+	properties.lastRunCleanup = Config.lastRunCleanup(stats, deletedCount, failedCount)
+	properties.lastRunDiagnostic = Config.lastRunDiagnostic(timestamp, stats, exportedCount, deletedCount, failedCount)
+	Logger.info("sync_completed", {
+		diagnostic = properties.lastRunDiagnostic,
+		candidates = stats.candidates,
+		selected = stats.selected,
+		exported = exportedCount,
+		skipped = stats.skipped,
+		orphaned = stats.orphaned,
+		deleted = deletedCount,
+		failed = failedCount,
+		ignored = stats.ignored,
+	})
 end
 
 function Sync.run()
@@ -63,7 +66,7 @@ function Sync.run()
 		return nil, configErr
 	end
 
-	local progressScope = LrProgressScope({ title = "Immich Derivative Sync" })
+	local progressScope = LrProgressScope({ title = "Bulk JPEG Sync" })
 
 	progressScope:setCaption("Loading sync state")
 	local state, stateErr = State.load(statePath())
@@ -77,15 +80,19 @@ function Sync.run()
 		return nil, "sync canceled"
 	end
 
-	progressScope:setCaption("Reading Lightroom catalog")
+	progressScope:setCaption("Searching Lightroom catalog")
 	local catalog = LrApplication.activeCatalog()
-	local photos = catalogPhotos(catalog)
+	local photos, photosErr = Catalog.findCandidates(catalog, config)
+	if not photos then
+		finish(progressScope)
+		return nil, photosErr
+	end
 	if canceled(progressScope) then
 		finish(progressScope)
 		return nil, "sync canceled"
 	end
 
-	progressScope:setCaption("Planning derivatives")
+	progressScope:setCaption("Planning JPEGs")
 	local plan, planErr = Scanner.plan(photos, state, config, Path.derivativePath, Exporter.fileExists, progressScope)
 	if not plan then
 		finish(progressScope)
@@ -93,17 +100,36 @@ function Sync.run()
 	end
 	local exportedCount = 0
 	local failedCount = 0
+	local deletedCount = 0
 
-	progressScope:setCaption("Marking orphans")
+	progressScope:setCaption("Deleting orphans")
 	for index, orphan in ipairs(plan.orphans) do
 		if canceled(progressScope) then
 			finish(progressScope)
 			return nil, "sync canceled"
 		end
 		if index % 100 == 0 then
-			progressScope:setCaption("Marking orphans " .. tostring(index) .. " of " .. tostring(#plan.orphans))
+			progressScope:setCaption("Deleting orphans " .. tostring(index) .. " of " .. tostring(#plan.orphans))
 		end
-		State.markOrphaned(state, orphan, now())
+		local outputPath = orphan.record and orphan.record.outputPath
+		local deleteFailed = false
+		if outputPath and outputPath ~= "" and FileUtils.fileExists(outputPath) then
+			local deleted, deleteErr = FileUtils.deleteFile(outputPath)
+			if deleted then
+				deletedCount = deletedCount + 1
+			else
+				deleteFailed = true
+				failedCount = failedCount + 1
+				Logger.error("orphan_delete_failed", {
+					photo = orphan.identifier or "unknown",
+					output = outputPath,
+					error = deleteErr,
+				})
+			end
+		end
+		if not deleteFailed then
+			State.markOrphaned(state, orphan, now())
+		end
 	end
 
 	progressScope:setCaption("Exporting 0 of " .. tostring(#plan.exports))
@@ -137,11 +163,11 @@ function Sync.run()
 		return nil, saveErr
 	end
 
-	updateLastRun(properties, plan.stats, exportedCount, #plan.orphans, failedCount)
+	updateLastRun(properties, plan.stats, exportedCount, deletedCount, failedCount)
 	if failedCount > 0 then
 		LrDialogs.message(
-			"Immich Derivative Sync completed with failures",
-			"Some photos failed to export. Check the Lightroom plugin log and state file.",
+			"Bulk JPEG Sync completed with failures",
+			"Some photos failed to export or clean up. Check the Lightroom plugin log and state file.",
 			"warning"
 		)
 	end

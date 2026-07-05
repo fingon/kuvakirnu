@@ -4,8 +4,8 @@ local LrPathUtils = import "LrPathUtils"
 local LrPrefs = import "LrPrefs"
 local LrView = import "LrView"
 
-local Config = require "ImmichDerivativeSyncConfig"
-local SyncLauncher = require "ImmichDerivativeSyncSyncLauncher"
+local Config = require "BulkJpegSyncConfig"
+local SyncLauncher = require "BulkJpegSyncSyncLauncher"
 
 local includeUnstarredTitle = "Include unstarred"
 local includeVirtualCopiesTitle = "Include virtual copies"
@@ -28,7 +28,7 @@ end
 
 local function browseForOutputDirectory(properties)
 	local path = LrDialogs.runOpenPanel({
-		title = "Choose Immich derivative output folder",
+		title = "Choose Bulk JPEG output folder",
 		canChooseFiles = false,
 		canChooseDirectories = true,
 		allowsMultipleSelection = false,
@@ -81,7 +81,7 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 
 	return {
 		{
-			title = "Derivative Sync",
+			title = "Bulk JPEG Sync",
 			viewFactory:column {
 				bind_to_object = properties,
 				spacing = viewFactory:control_spacing(),
@@ -210,7 +210,30 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 						width = LrView.share "labelWidth",
 					},
 					viewFactory:static_text {
-						title = bind "lastRunSummary",
+						title = bind "lastRunAt",
+						width_in_chars = 24,
+					},
+				},
+				viewFactory:row {
+					spacing = viewFactory:control_spacing(),
+					viewFactory:static_text {
+						title = "Results",
+						width = LrView.share "labelWidth",
+					},
+					viewFactory:static_text {
+						title = bind "lastRunResults",
+						width_in_chars = 34,
+					},
+				},
+				viewFactory:row {
+					spacing = viewFactory:control_spacing(),
+					viewFactory:static_text {
+						title = "Cleanup",
+						width = LrView.share "labelWidth",
+					},
+					viewFactory:static_text {
+						title = bind "lastRunCleanup",
+						width_in_chars = 34,
 					},
 				},
 				viewFactory:row {
@@ -247,7 +270,7 @@ end
 
 return {
 	sectionsForTopOfDialog = function(viewFactory, propertyTable)
-		return LrFunctionContext.callWithContext("ImmichDerivativeSyncSettings", function(context)
+		return LrFunctionContext.callWithContext("BulkJpegSyncSettings", function(context)
 			Config.loadPreferencesIntoProperties(LrPrefs.prefsForPlugin(), propertyTable)
 			observePreferences(context, propertyTable)
 			return sectionsForTopOfDialog(viewFactory, propertyTable)

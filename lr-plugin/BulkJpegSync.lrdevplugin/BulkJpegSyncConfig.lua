@@ -14,7 +14,10 @@ Config.preferenceKeys = {
 	"jpegQuality",
 	"includeUnstarred",
 	"includeVirtualCopies",
-	"lastRunSummary",
+	"lastRunAt",
+	"lastRunResults",
+	"lastRunCleanup",
+	"lastRunDiagnostic",
 }
 
 local noStarThreshold = 0
@@ -56,7 +59,7 @@ local function pluginId()
 		end
 	end
 
-	return "fi.lehteni.immich-derivative-sync"
+	return "fi.iki.fingon.bulk-jpeg-sync"
 end
 
 function Config.pluginDataDirectory()
@@ -83,8 +86,17 @@ function Config.ensureDefaults(properties)
 	end
 	properties.includeUnstarred = normalizeBoolean(properties.includeUnstarred, Config.defaultIncludeUnstarred)
 	properties.includeVirtualCopies = normalizeBoolean(properties.includeVirtualCopies, Config.defaultIncludeVirtualCopies)
-	if properties.lastRunSummary == nil then
-		properties.lastRunSummary = "Never"
+	if properties.lastRunAt == nil then
+		properties.lastRunAt = "Never"
+	end
+	if properties.lastRunResults == nil then
+		properties.lastRunResults = "Not run"
+	end
+	if properties.lastRunCleanup == nil then
+		properties.lastRunCleanup = "Not run"
+	end
+	if properties.lastRunDiagnostic == nil then
+		properties.lastRunDiagnostic = "Never"
 	end
 end
 
@@ -97,6 +109,40 @@ function Config.refreshDerivedProperties(properties)
 	properties.ratingSummary = Config.ratingSummary(properties)
 	properties.canSync = Config.canSync(properties)
 	properties.syncAvailabilitySummary = Config.syncAvailabilitySummary(properties)
+end
+
+function Config.lastRunResults(stats, exportedCount)
+	return string.format(
+		"candidates %d, selected %d, exported %d, skipped %d",
+		stats.candidates,
+		stats.selected,
+		exportedCount,
+		stats.skipped
+	)
+end
+
+function Config.lastRunCleanup(stats, deletedCount, failedCount)
+	return string.format(
+		"orphaned %d, deleted %d, failed %d",
+		stats.orphaned,
+		deletedCount,
+		failedCount
+	)
+end
+
+function Config.lastRunDiagnostic(timestamp, stats, exportedCount, deletedCount, failedCount)
+	return string.format(
+		"%s candidates=%d selected=%d exported=%d skipped=%d orphaned=%d deleted=%d failed=%d ignored=%d",
+		timestamp,
+		stats.candidates,
+		stats.selected,
+		exportedCount,
+		stats.skipped,
+		stats.orphaned,
+		deletedCount,
+		failedCount,
+		stats.ignored
+	)
 end
 
 function Config.loadPreferencesIntoProperties(prefs, properties)

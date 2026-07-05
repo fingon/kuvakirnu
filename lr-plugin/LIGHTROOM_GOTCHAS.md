@@ -42,8 +42,9 @@ Notes from building and testing this plugin against Lightroom Classic.
 - Run long work from `LrTasks.startAsyncTask`.
 - Add `LrTasks.yield()` in large Lua loops, update progress captions, and honor
   progress cancellation.
-- A full-catalog `catalog:getAllPhotos()` call can still be expensive before
-  plugin code can report detailed per-photo progress.
+- Prefer `catalog:findPhotos()` search descriptors for rating-filtered syncs.
+  A full-catalog `catalog:getAllPhotos()` call can be expensive before plugin
+  code can report detailed per-photo progress.
 
 ## Filesystem behavior
 

@@ -1,4 +1,4 @@
-local FileUtils = require "ImmichDerivativeSyncFileUtils"
+local FileUtils = require "BulkJpegSyncFileUtils"
 
 local State = {}
 local backupStateSuffix = ".bak"
@@ -54,7 +54,7 @@ local function ensureDirectory(path)
 	if directory == "." then
 		return true
 	end
-	local probePath = directory .. "/.immich-derivative-sync-write-test"
+	local probePath = directory .. "/.bulk-jpeg-sync-write-test"
 	local probe = io.open(probePath, "w")
 	if probe then
 		probe:close()
@@ -182,7 +182,7 @@ end
 function State.markOrphaned(state, item, orphanedAt)
 	item.record.status = "orphaned"
 	item.record.orphanedAt = orphanedAt
-	state.photos[item.photo.identifier] = item.record
+	state.photos[item.identifier or item.photo.identifier] = item.record
 end
 
 return State

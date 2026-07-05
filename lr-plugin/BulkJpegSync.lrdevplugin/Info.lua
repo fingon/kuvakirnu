@@ -1,18 +1,18 @@
 return {
 	LrSdkVersion = 13.0,
 	LrSdkMinimumVersion = 6.0,
-	LrToolkitIdentifier = "fi.lehteni.immich-derivative-sync",
-	LrPluginName = "Immich Derivative Sync",
+	LrToolkitIdentifier = "fi.iki.fingon.bulk-jpeg-sync",
+	LrPluginName = "Bulk JPEG Sync",
 	LrPluginInfoProvider = "SettingsProvider.lua",
 	LrLibraryMenuItems = {
 		{
-			title = "Sync Derivatives to Folder",
+			title = "Sync JPEGs to Folder",
 			file = "SyncMenu.lua",
 		},
 	},
 	LrExportMenuItems = {
 		{
-			title = "Sync Derivatives to Folder",
+			title = "Sync JPEGs to Folder",
 			file = "SyncMenu.lua",
 		},
 	},

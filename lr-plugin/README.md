@@ -1,32 +1,32 @@
-# Immich Derivative Sync Lightroom Plugin
+# Bulk JPEG Sync Lightroom Plugin
 
 This directory contains a Lightroom Classic SDK plugin that exports stable JPEG
-derivatives for Immich External Libraries.
+derivatives for filesystems, galleries, sync tools, and external photo
+libraries.
 
-The plugin is intentionally folder-based. It does not call the Immich API and it
-does not upload files into Immich storage. Immich should index the derivative
-folder as an External Library.
+The plugin is intentionally folder-based. It does not call any photo service API
+and it does not upload files into managed storage. Point downstream tooling at
+the exported JPEG folder.
 
 ## Install
 
 1. Open Lightroom Classic.
 2. Go to `File > Plug-in Manager`.
 3. Click `Add`.
-4. Select `lr-plugin/ImmichDerivativeSync.lrdevplugin`.
+4. Select `lr-plugin/BulkJpegSync.lrdevplugin`.
 5. Configure the plugin in the Plug-in Manager.
 
 ## Use
 
-Run `Library > Plug-in Extras > Sync Derivatives to Folder`.
+Run `Library > Plug-in Extras > Sync JPEGs to Folder`.
 
 The same command is also available from `File > Plug-in Extras` and as `Sync
 Now` in the plugin settings panel. The plugin exports matching photos into the
-configured output directory. Point an Immich External Library at that directory
-or at a synced copy of it.
+configured output directory.
 
-Sync shows Lightroom progress captions while loading state, reading the catalog,
-planning derivatives, exporting, and saving state. Canceling the progress dialog
-stops before later phases when possible.
+Sync shows Lightroom progress captions while loading state, searching the
+catalog, planning JPEGs, deleting orphaned files, exporting, and saving state.
+Canceling the progress dialog stops before later phases when possible.
 
 ## Current behavior
 
@@ -35,16 +35,20 @@ stops before later phases when possible.
 - Can include unstarred photos independently from the star threshold.
 - Can include virtual copies when enabled.
 - Skips rejected photos.
+- Queries Lightroom for matching rating candidates instead of scanning the full
+  catalog.
 - Writes derivatives under `YYYY/YYYY-MM-DD/`.
 - Uses stable filenames shaped like `IMG_1234__lr-<lightroom-id>.jpg`.
 - Uses filenames shaped like
   `IMG_1234__copy-BlackWhite__lr-<lightroom-id>.jpg` for virtual copies when
   Lightroom exposes a copy name.
-- Reuses the recorded output path for already-seen photos so Immich asset paths
-  remain stable.
+- Reuses the recorded output path for already-seen photos so downstream asset
+  paths remain stable.
 - Stores sync state in a plugin-owned Lua manifest file.
-- Marks photos as orphaned in state when they stop matching rules, but leaves
-  derivative files in place.
+- Deletes derivative files and marks state records orphaned when photos stop
+  matching the configured rules.
+- Shows compact last-run status in the Plug-in Manager and stores a full
+  diagnostic string in plugin preferences and the Lightroom plugin log.
 - Prevents concurrent manual sync runs while a run is already active.
 
 ## Settings
@@ -84,9 +88,7 @@ and filesystem limitations.
 
 ## Known MVP limits
 
-- No Immich API integration.
 - No background interval sync.
 - No video or Live Photo support.
-- No automatic cleanup of temporary mobile uploads.
 - No bidirectional metadata sync.
-- No UI for reviewing or deleting orphaned derivatives.
+- No orphan review UI before automatic deletion.

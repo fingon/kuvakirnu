@@ -1,6 +1,6 @@
 # TODO
 
-Remaining work for the Lightroom Classic-to-Immich derivative sync plugin.
+Remaining work for the Lightroom Classic-to-Bulk JPEG sync plugin.
 
 See `lr-plugin/LIGHTROOM_GOTCHAS.md` for Lightroom SDK behavior discovered while
 building this plugin.
@@ -25,7 +25,7 @@ building this plugin.
 - Confirm fixed-title star rating controls select and clear thresholds and
   update the rating summary correctly.
 - Confirm the unstarred button and virtual-copy checkbox persist correctly.
-- Confirm `catalog:getAllPhotos()` and the metadata keys used in
+- Confirm `catalog:findPhotos()` rating searches and the metadata keys used in
   `Photo.snapshot` return the expected identifiers, capture timestamps, ratings,
   rejected state, and virtual-copy state.
 - Confirm virtual-copy exports get unique filenames for named and unnamed copies.
@@ -35,6 +35,8 @@ building this plugin.
   stable derivative path correctly.
 - Confirm re-running a sync skips unchanged files and replaces changed
   derivatives in place.
+- Confirm downgraded, rejected, or otherwise no-longer-matching photos have
+  derivative files deleted from the output folder.
 - Confirm failures for offline originals, missing output directories, and export
   errors are visible to the user and recorded in state.
 
@@ -64,10 +66,7 @@ building this plugin.
   - edited-only exports
   - source-folder and date-range filters
 - Orphan review UI with archive, delete, and keep actions.
-- Immich API integration to trigger External Library scans.
-- Optional Lightroom collection to Immich album mapping.
-- Temporary Immich mobile-upload reconciliation after derivatives are verified.
 - Video derivative support.
 - Live Photo pairing support.
 - Optional WebP or AVIF derivative formats if Lightroom export support and
-  Immich behavior make them practical.
+  downstream tooling behavior make them practical.

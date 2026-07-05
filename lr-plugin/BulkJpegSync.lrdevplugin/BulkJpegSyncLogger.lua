@@ -33,7 +33,7 @@ local function log(level, message, metadata)
 
 	local LrLogger = maybeImport("LrLogger")
 	if LrLogger then
-		local logger = LrLogger("ImmichDerivativeSync")
+		local logger = LrLogger("BulkJpegSync")
 		if logger[level] then
 			logger:enable("logfile")
 			logger[level](logger, line)

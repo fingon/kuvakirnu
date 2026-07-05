@@ -1,11 +1,12 @@
-package.path = "lr-plugin/ImmichDerivativeSync.lrdevplugin/?.lua;tests/?.lua;" .. package.path
+package.path = "lr-plugin/BulkJpegSync.lrdevplugin/?.lua;tests/?.lua;" .. package.path
 
-local Config = require "ImmichDerivativeSyncConfig"
-local FileUtils = require "ImmichDerivativeSyncFileUtils"
-local Path = require "ImmichDerivativeSyncPath"
-local Photo = require "ImmichDerivativeSyncPhoto"
-local Scanner = require "ImmichDerivativeSyncScanner"
-local State = require "ImmichDerivativeSyncState"
+local Catalog = require "BulkJpegSyncCatalog"
+local Config = require "BulkJpegSyncConfig"
+local FileUtils = require "BulkJpegSyncFileUtils"
+local Path = require "BulkJpegSyncPath"
+local Photo = require "BulkJpegSyncPhoto"
+local Scanner = require "BulkJpegSyncScanner"
+local State = require "BulkJpegSyncState"
 
 local tests = {}
 
@@ -28,9 +29,10 @@ local function assertNil(value, message)
 end
 
 local function assertPlanStats(actual, expected)
-	assertEqual(actual.scanned, expected.scanned, "scanned count differs")
+	assertEqual(actual.candidates, expected.candidates, "candidate count differs")
 	assertEqual(actual.selected, expected.selected, "selected count differs")
 	assertEqual(actual.skipped, expected.skipped, "skipped count differs")
+	assertEqual(actual.orphaned, expected.orphaned, "orphaned count differs")
 	assertEqual(actual.ignored, expected.ignored, "ignored count differs")
 end
 
@@ -92,6 +94,57 @@ local function fakeLightroomPhoto(rawMetadata, formattedMetadata)
 			return formattedMetadata and formattedMetadata[key] or nil
 		end,
 	}
+end
+
+function tests.catalog_search_description_filters_threshold_and_rejected()
+	local desc = Catalog.searchDescription({ minRating = 4, includeUnstarred = false })
+
+	assertEqual(desc.combine, "intersect")
+	assertEqual(desc[1].criteria, "pick")
+	assertEqual(desc[1].operation, "!=")
+	assertEqual(desc[1].value, -1)
+	assertEqual(desc[2].criteria, "rating")
+	assertEqual(desc[2].operation, ">=")
+	assertEqual(desc[2].value, 4)
+end
+
+function tests.catalog_search_description_filters_unstarred_only()
+	local desc = Catalog.searchDescription({ minRating = nil, includeUnstarred = true })
+
+	assertEqual(desc.combine, "intersect")
+	assertEqual(desc[2].criteria, "rating")
+	assertEqual(desc[2].operation, "==")
+	assertEqual(desc[2].value, 0)
+end
+
+function tests.catalog_search_description_unions_unstarred_and_threshold()
+	local desc = Catalog.searchDescription({ minRating = 3, includeUnstarred = true })
+
+	assertEqual(desc.combine, "intersect")
+	assertEqual(desc[2].combine, "union")
+	assertEqual(desc[2][1].criteria, "rating")
+	assertEqual(desc[2][1].operation, "==")
+	assertEqual(desc[2][1].value, 0)
+	assertEqual(desc[2][2].criteria, "rating")
+	assertEqual(desc[2][2].operation, ">=")
+	assertEqual(desc[2][2].value, 3)
+end
+
+function tests.catalog_find_candidates_uses_find_photos()
+	local received = nil
+	local catalog = {
+		findPhotos = function(_, params)
+			received = params.searchDesc
+			return { "photo" }
+		end,
+	}
+
+	local photos, err = Catalog.findCandidates(catalog, { minRating = 5, includeUnstarred = false })
+
+	assertTrue(photos, err)
+	assertEqual(photos[1], "photo")
+	assertEqual(received[2].criteria, "rating")
+	assertEqual(received[2].value, 5)
 end
 
 function tests.path_generation_is_stable_and_sanitized()
@@ -175,7 +228,7 @@ function tests.scanner_filters_rating_rejected_and_virtual_copy()
 
 	assertEqual(#planned.exports, 1)
 	assertEqual(planned.exports[1].photo.identifier, "a")
-	assertPlanStats(planned.stats, { scanned = 4, selected = 1, skipped = 0, ignored = 3 })
+	assertPlanStats(planned.stats, { candidates = 4, selected = 1, skipped = 0, orphaned = 0, ignored = 3 })
 end
 
 function tests.scanner_includes_unstarred_when_enabled()
@@ -190,7 +243,7 @@ function tests.scanner_includes_unstarred_when_enabled()
 
 	assertEqual(#planned.exports, 1)
 	assertEqual(planned.exports[1].photo.identifier, "a")
-	assertPlanStats(planned.stats, { scanned = 2, selected = 1, skipped = 0, ignored = 1 })
+	assertPlanStats(planned.stats, { candidates = 2, selected = 1, skipped = 0, orphaned = 0, ignored = 1 })
 end
 
 function tests.scanner_includes_only_unstarred_without_star_threshold()
@@ -205,7 +258,7 @@ function tests.scanner_includes_only_unstarred_without_star_threshold()
 
 	assertEqual(#planned.exports, 1)
 	assertEqual(planned.exports[1].photo.identifier, "a")
-	assertPlanStats(planned.stats, { scanned = 2, selected = 1, skipped = 0, ignored = 1 })
+	assertPlanStats(planned.stats, { candidates = 2, selected = 1, skipped = 0, orphaned = 0, ignored = 1 })
 end
 
 function tests.scanner_includes_nothing_without_any_rating_selection()
@@ -219,7 +272,7 @@ function tests.scanner_includes_nothing_without_any_rating_selection()
 	end)
 
 	assertEqual(#planned.exports, 0)
-	assertPlanStats(planned.stats, { scanned = 2, selected = 0, skipped = 0, ignored = 2 })
+	assertPlanStats(planned.stats, { candidates = 2, selected = 0, skipped = 0, orphaned = 0, ignored = 2 })
 end
 
 function tests.scanner_includes_virtual_copies_when_enabled()
@@ -233,7 +286,7 @@ function tests.scanner_includes_virtual_copies_when_enabled()
 
 	assertEqual(#planned.exports, 1)
 	assertEqual(planned.exports[1].photo.identifier, "a")
-	assertPlanStats(planned.stats, { scanned = 1, selected = 1, skipped = 0, ignored = 0 })
+	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 })
 end
 
 function tests.scanner_plan_can_be_canceled()
@@ -315,7 +368,7 @@ function tests.scanner_marks_existing_below_threshold_as_orphan()
 
 	assertEqual(#planned.orphans, 1)
 	assertEqual(planned.orphans[1].photo.identifier, "a")
-	assertPlanStats(planned.stats, { scanned = 1, selected = 0, skipped = 0, ignored = 0 })
+	assertPlanStats(planned.stats, { candidates = 1, selected = 0, skipped = 0, orphaned = 1, ignored = 0 })
 end
 
 function tests.scanner_skips_when_unchanged_and_file_exists()
@@ -343,10 +396,10 @@ function tests.scanner_skips_when_unchanged_and_file_exists()
 	end)
 
 	assertEqual(#planned.exports, 0)
-	assertPlanStats(planned.stats, { scanned = 1, selected = 1, skipped = 1, ignored = 0 })
+	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 1, orphaned = 0, ignored = 0 })
 end
 
-function tests.scanner_stats_separate_selected_skips_from_ignored_catalog_photos()
+function tests.scanner_marks_exported_records_absent_from_candidates_as_orphans()
 	local config = { outputDirectory = "/out", minRating = 5, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
 	local state = State.empty()
 	local photos = {}
@@ -372,23 +425,21 @@ function tests.scanner_stats_separate_selected_skips_from_ignored_catalog_photos
 		}
 	end
 
-	for index = 1, 95 do
-		photos[#photos + 1] = {
-			identifier = "ignored-" .. tostring(index),
-			fileName = "ignored.raw",
-			rating = 4,
-			isRejected = false,
-			isVirtualCopy = false,
-		}
-	end
+	state.photos.absent = {
+		outputPath = "/out/absent.jpg",
+		status = "exported",
+		fingerprint = "old",
+		exportSettingsVersion = 1,
+	}
 
 	local planned = Scanner.plan(photos, state, config, Path.derivativePath, function()
 		return true
 	end)
 
 	assertEqual(#planned.exports, 0)
-	assertEqual(#planned.orphans, 0)
-	assertPlanStats(planned.stats, { scanned = 100, selected = 5, skipped = 5, ignored = 95 })
+	assertEqual(#planned.orphans, 1)
+	assertEqual(planned.orphans[1].identifier, "absent")
+	assertPlanStats(planned.stats, { candidates = 5, selected = 5, skipped = 5, orphaned = 1, ignored = 0 })
 end
 
 function tests.scanner_stats_count_selected_exports_without_skipping()
@@ -401,7 +452,7 @@ function tests.scanner_stats_count_selected_exports_without_skipping()
 	end)
 
 	assertEqual(#planned.exports, 1)
-	assertPlanStats(planned.stats, { scanned = 1, selected = 1, skipped = 0, ignored = 0 })
+	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 })
 end
 
 function tests.config_defaults_are_visible()
@@ -413,6 +464,10 @@ function tests.config_defaults_are_visible()
 	assertEqual(properties.jpegQuality, 85)
 	assertEqual(properties.includeUnstarred, false)
 	assertEqual(properties.includeVirtualCopies, false)
+	assertEqual(properties.lastRunAt, "Never")
+	assertEqual(properties.lastRunResults, "Not run")
+	assertEqual(properties.lastRunCleanup, "Not run")
+	assertEqual(properties.lastRunDiagnostic, "Never")
 end
 
 function tests.config_defaults_repair_blank_persisted_values()
@@ -471,6 +526,17 @@ function tests.config_can_sync_rejects_empty_rating_selection()
 	local properties = { outputDirectory = "/out", minRating = 0, includeUnstarred = false }
 	assertEqual(Config.canSync(properties), false)
 	assertEqual(Config.syncAvailabilitySummary(properties), "Select unstarred or a star threshold.")
+end
+
+function tests.config_formats_last_run_fields()
+	local stats = { candidates = 5, selected = 5, skipped = 4, orphaned = 2, ignored = 1 }
+
+	assertEqual(Config.lastRunResults(stats, 1), "candidates 5, selected 5, exported 1, skipped 4")
+	assertEqual(Config.lastRunCleanup(stats, 2, 1), "orphaned 2, deleted 2, failed 1")
+	assertEqual(
+		Config.lastRunDiagnostic("2026-07-05T10:11:12Z", stats, 1, 2, 1),
+		"2026-07-05T10:11:12Z candidates=5 selected=5 exported=1 skipped=4 orphaned=2 deleted=2 failed=1 ignored=1"
+	)
 end
 
 function tests.file_utils_move_reports_missing_lightroom_error()
@@ -661,7 +727,10 @@ function tests.config_loads_preferences_into_properties()
 		jpegQuality = 75,
 		includeUnstarred = true,
 		includeVirtualCopies = true,
-		lastRunSummary = "done",
+		lastRunAt = "2026-07-05T10:11:12Z",
+		lastRunResults = "candidates 4",
+		lastRunCleanup = "orphaned 0",
+		lastRunDiagnostic = "full diagnostic",
 	}
 	local properties = {}
 
@@ -673,7 +742,10 @@ function tests.config_loads_preferences_into_properties()
 	assertEqual(properties.jpegQuality, 75)
 	assertEqual(properties.includeUnstarred, true)
 	assertEqual(properties.includeVirtualCopies, true)
-	assertEqual(properties.lastRunSummary, "done")
+	assertEqual(properties.lastRunAt, "2026-07-05T10:11:12Z")
+	assertEqual(properties.lastRunResults, "candidates 4")
+	assertEqual(properties.lastRunCleanup, "orphaned 0")
+	assertEqual(properties.lastRunDiagnostic, "full diagnostic")
 	assertEqual(properties.outputDirectoryDisplay, "/chosen")
 	assertEqual(properties.ratingSummary, "Selected: unstarred, 4+")
 end
@@ -692,6 +764,9 @@ function tests.config_loads_empty_preferences_as_defaults()
 	assertEqual(properties.includeVirtualCopies, false)
 	assertEqual(properties.outputDirectoryDisplay, "Not selected")
 	assertEqual(properties.ratingSummary, "Selected: 3+")
+	assertEqual(properties.lastRunAt, "Never")
+	assertEqual(properties.lastRunResults, "Not run")
+	assertEqual(properties.lastRunCleanup, "Not run")
 end
 
 function tests.config_saves_properties_to_preferences()
@@ -702,7 +777,10 @@ function tests.config_saves_properties_to_preferences()
 		jpegQuality = 70,
 		includeUnstarred = true,
 		includeVirtualCopies = false,
-		lastRunSummary = "old",
+		lastRunAt = "2026-07-05T10:11:12Z",
+		lastRunResults = "candidates 5",
+		lastRunCleanup = "orphaned 0",
+		lastRunDiagnostic = "full diagnostic",
 		outputDirectoryDisplay = "derived",
 		ratingSummary = "derived",
 	}
@@ -716,7 +794,10 @@ function tests.config_saves_properties_to_preferences()
 	assertEqual(prefs.jpegQuality, 70)
 	assertEqual(prefs.includeUnstarred, true)
 	assertEqual(prefs.includeVirtualCopies, false)
-	assertEqual(prefs.lastRunSummary, "old")
+	assertEqual(prefs.lastRunAt, "2026-07-05T10:11:12Z")
+	assertEqual(prefs.lastRunResults, "candidates 5")
+	assertEqual(prefs.lastRunCleanup, "orphaned 0")
+	assertEqual(prefs.lastRunDiagnostic, "full diagnostic")
 	assertNil(prefs.outputDirectoryDisplay)
 	assertNil(prefs.ratingSummary)
 	assertEqual(properties.outputDirectoryDisplay, "/out")

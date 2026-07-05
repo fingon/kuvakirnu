@@ -1,5 +1,5 @@
-local FileUtils = require "ImmichDerivativeSyncFileUtils"
-local Path = require "ImmichDerivativeSyncPath"
+local FileUtils = require "BulkJpegSyncFileUtils"
+local Path = require "BulkJpegSyncPath"
 
 local Exporter = {}
 
@@ -78,7 +78,7 @@ function Exporter.exportItems(items, config, progressScope)
 		photos[#photos + 1] = item.photo.handle
 	end
 
-	local temporaryDirectory = Path.dirname(items[1].outputPath) .. "/.immich-derivative-sync-tmp"
+	local temporaryDirectory = Path.dirname(items[1].outputPath) .. "/.bulk-jpeg-sync-tmp"
 	local ok, dirErr = mkdirp(temporaryDirectory)
 	if not ok then
 		return nil, dirErr

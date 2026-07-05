@@ -1,4 +1,4 @@
-local Photo = require "ImmichDerivativeSyncPhoto"
+local Photo = require "BulkJpegSyncPhoto"
 
 local Scanner = {}
 local exportedStatus = "exported"
@@ -52,9 +52,10 @@ function Scanner.plan(photos, state, config, pathGenerator, fileExists, progress
 	local seen = {}
 	local totalPhotos = #photos
 	local stats = {
-		scanned = totalPhotos,
+		candidates = totalPhotos,
 		selected = 0,
 		skipped = 0,
+		orphaned = 0,
 		ignored = 0,
 	}
 
@@ -93,11 +94,23 @@ function Scanner.plan(photos, state, config, pathGenerator, fileExists, progress
 			end
 		elseif record and record.status == exportedStatus then
 			orphans[#orphans + 1] = {
+				identifier = photo.identifier,
 				photo = photo,
 				record = record,
 			}
+			stats.orphaned = stats.orphaned + 1
 		else
 			stats.ignored = stats.ignored + 1
+		end
+	end
+
+	for identifier, record in pairs(state.photos) do
+		if record.status == exportedStatus and not seen[identifier] then
+			orphans[#orphans + 1] = {
+				identifier = identifier,
+				record = record,
+			}
+			stats.orphaned = stats.orphaned + 1
 		end
 	end
 
