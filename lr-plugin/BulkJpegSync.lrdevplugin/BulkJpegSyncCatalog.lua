@@ -78,12 +78,20 @@ function Catalog.findCandidates(catalog, config)
 end
 
 function Catalog.batchMetadata(catalog, photos)
-	if not catalog or not catalog.batchGetRawMetadata or not catalog.batchGetFormattedMetadata then
+	if
+		not catalog
+		or not catalog.batchGetRawMetadata
+		or not catalog.batchGetFormattedMetadata
+	then
 		return nil, "Lightroom batch metadata is unavailable"
 	end
 
-	local rawMetadata = catalog:batchGetRawMetadata(photos, rawMetadataKeys) or {}
-	local formattedMetadata = catalog:batchGetFormattedMetadata(photos, formattedMetadataKeys) or {}
+	local rawMetadata = catalog:batchGetRawMetadata(photos, rawMetadataKeys)
+		or {}
+	local formattedMetadata = catalog:batchGetFormattedMetadata(
+		photos,
+		formattedMetadataKeys
+	) or {}
 
 	return {
 		raw = rawMetadata,

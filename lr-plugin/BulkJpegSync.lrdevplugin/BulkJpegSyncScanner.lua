@@ -1,4 +1,4 @@
-local Photo = require "BulkJpegSyncPhoto"
+local Photo = require("BulkJpegSyncPhoto")
 
 local Scanner = {}
 local exportedStatus = "exported"
@@ -25,7 +25,9 @@ local function yield()
 end
 
 local function canceled(progressScope)
-	return progressScope and progressScope.isCanceled and progressScope:isCanceled()
+	return progressScope
+		and progressScope.isCanceled
+		and progressScope:isCanceled()
 end
 
 function Scanner.matches(photo, config)
@@ -71,18 +73,28 @@ local function selected(photo, config, options)
 end
 
 local function progressDone(options, index, total)
-	if not options or not options.progressStart or not options.progressEnd or not options.progressTotal then
+	if
+		not options
+		or not options.progressStart
+		or not options.progressEnd
+		or not options.progressTotal
+	then
 		return index, total
 	end
 	if total <= 0 then
 		return options.progressEnd, options.progressTotal
 	end
 
-	return options.progressStart + math.floor((options.progressEnd - options.progressStart) * index / total), options.progressTotal
+	return options.progressStart + math.floor(
+		(options.progressEnd - options.progressStart) * index / total
+	),
+		options.progressTotal
 end
 
 local function olderThan(timestamp, threshold)
-	return threshold ~= nil and threshold ~= "" and (timestamp == nil or timestamp == "" or timestamp < threshold)
+	return threshold ~= nil
+		and threshold ~= ""
+		and (timestamp == nil or timestamp == "" or timestamp < threshold)
 end
 
 local function epochChanged(recordValue, configValue, lastExportTime)
@@ -101,13 +113,29 @@ local function needsExport(record, fingerprint, outputPath, config, fileExists)
 		or record.status ~= exportedStatus
 		or record.fingerprint ~= fingerprint
 		or record.exportSettingsVersion ~= config.exportSettingsVersion
-		or epochChanged(record.pluginVersionTimestamp, config.pluginVersionTimestamp, record.lastExportTime)
-		or epochChanged(record.outputSettingsChangedAt, config.outputSettingsChangedAt, record.lastExportTime)
+		or epochChanged(
+			record.pluginVersionTimestamp,
+			config.pluginVersionTimestamp,
+			record.lastExportTime
+		)
+		or epochChanged(
+			record.outputSettingsChangedAt,
+			config.outputSettingsChangedAt,
+			record.lastExportTime
+		)
 		or record.outputSettingsFingerprint ~= config.outputSettingsFingerprint
 		or not fileExists(outputPath)
 end
 
-function Scanner.plan(photos, state, config, pathGenerator, fileExists, progressScope, options)
+function Scanner.plan(
+	photos,
+	state,
+	config,
+	pathGenerator,
+	fileExists,
+	progressScope,
+	options
+)
 	local exports = {}
 	local orphans = {}
 	local seen = {}
@@ -129,7 +157,12 @@ function Scanner.plan(photos, state, config, pathGenerator, fileExists, progress
 		end
 		if progressScope and index % 100 == 0 then
 			local done, total = progressDone(options, index, totalPhotos)
-			progressScope:setCaption("Planning derivatives " .. tostring(index) .. " of " .. tostring(totalPhotos))
+			progressScope:setCaption(
+				"Planning derivatives "
+					.. tostring(index)
+					.. " of "
+					.. tostring(totalPhotos)
+			)
 			progressScope:setPortionComplete(done, total)
 			yield()
 		end
@@ -151,10 +184,13 @@ function Scanner.plan(photos, state, config, pathGenerator, fileExists, progress
 					stats.metadataMismatched = stats.metadataMismatched + 1
 				end
 			end
-			local outputPath = record and record.outputPath or pathGenerator(config.outputDirectory, photo)
+			local outputPath = record and record.outputPath
+				or pathGenerator(config.outputDirectory, photo)
 			local fingerprint = Photo.fingerprint(photo)
 
-			if needsExport(record, fingerprint, outputPath, config, fileExists) then
+			if
+				needsExport(record, fingerprint, outputPath, config, fileExists)
+			then
 				exports[#exports + 1] = {
 					photo = photo,
 					outputPath = outputPath,
@@ -187,7 +223,12 @@ function Scanner.plan(photos, state, config, pathGenerator, fileExists, progress
 
 	if progressScope then
 		local done, total = progressDone(options, totalPhotos, totalPhotos)
-		progressScope:setCaption("Planning derivatives " .. tostring(totalPhotos) .. " of " .. tostring(totalPhotos))
+		progressScope:setCaption(
+			"Planning derivatives "
+				.. tostring(totalPhotos)
+				.. " of "
+				.. tostring(totalPhotos)
+		)
 		progressScope:setPortionComplete(done, total)
 	end
 

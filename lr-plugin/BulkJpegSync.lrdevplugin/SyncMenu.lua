@@ -1,3 +1,3 @@
-local SyncLauncher = require "BulkJpegSyncSyncLauncher"
+local SyncLauncher = require("BulkJpegSyncSyncLauncher")
 
 SyncLauncher.runAsync()

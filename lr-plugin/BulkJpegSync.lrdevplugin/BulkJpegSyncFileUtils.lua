@@ -23,7 +23,12 @@ local function operationError(operation, sourcePath, targetPath, err)
 		)
 	end
 
-	return string.format("failed to %s file path=%s error=%s", operation, tostring(sourcePath), message)
+	return string.format(
+		"failed to %s file path=%s error=%s",
+		operation,
+		tostring(sourcePath),
+		message
+	)
 end
 
 local function fileExists(path)
@@ -104,7 +109,8 @@ local function replaceFile(sourcePath, targetPath, options)
 		end
 	end
 
-	local movedReplacement, moveReplacementErr = moveFile(sourcePath, targetPath)
+	local movedReplacement, moveReplacementErr =
+		moveFile(sourcePath, targetPath)
 	if movedReplacement then
 		return true
 	end
@@ -114,7 +120,10 @@ local function replaceFile(sourcePath, targetPath, options)
 
 	local restored, restoreErr = moveFile(backupPath, targetPath)
 	if not restored then
-		return nil, moveReplacementErr .. "; failed to restore backup: " .. tostring(restoreErr)
+		return nil,
+			moveReplacementErr .. "; failed to restore backup: " .. tostring(
+				restoreErr
+			)
 	end
 
 	return nil, moveReplacementErr

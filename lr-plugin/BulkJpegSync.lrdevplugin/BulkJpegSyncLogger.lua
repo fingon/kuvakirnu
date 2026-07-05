@@ -1,4 +1,4 @@
-local Config = require "BulkJpegSyncConfig"
+local Config = require("BulkJpegSyncConfig")
 
 local Logger = {}
 
@@ -46,23 +46,44 @@ end
 local function appendLogFile(line)
 	local path = Config.logFilePath()
 	if not ensureDirectory(path) then
-		io.stderr:write("[error] log_directory_unavailable path=" .. tostring(path) .. "\n")
+		io.stderr:write(
+			"[error] log_directory_unavailable path=" .. tostring(path) .. "\n"
+		)
 		return
 	end
 
 	local file, openErr = io.open(path, "a")
 	if not file then
-		io.stderr:write("[error] log_file_unavailable path=" .. tostring(path) .. " error=" .. tostring(openErr) .. "\n")
+		io.stderr:write(
+			"[error] log_file_unavailable path="
+				.. tostring(path)
+				.. " error="
+				.. tostring(openErr)
+				.. "\n"
+		)
 		return
 	end
 
-	local wrote, writeErr = file:write(os.date("!%Y-%m-%dT%H:%M:%SZ"), " ", line, "\n")
+	local wrote, writeErr =
+		file:write(os.date("!%Y-%m-%dT%H:%M:%SZ"), " ", line, "\n")
 	local closed, closeErr = file:close()
 	if not wrote then
-		io.stderr:write("[error] log_file_write_failed path=" .. tostring(path) .. " error=" .. tostring(writeErr) .. "\n")
+		io.stderr:write(
+			"[error] log_file_write_failed path="
+				.. tostring(path)
+				.. " error="
+				.. tostring(writeErr)
+				.. "\n"
+		)
 	end
 	if not closed then
-		io.stderr:write("[error] log_file_close_failed path=" .. tostring(path) .. " error=" .. tostring(closeErr) .. "\n")
+		io.stderr:write(
+			"[error] log_file_close_failed path="
+				.. tostring(path)
+				.. " error="
+				.. tostring(closeErr)
+				.. "\n"
+		)
 	end
 end
 

@@ -68,7 +68,10 @@ end
 function Config.pluginDataDirectory()
 	local LrPathUtils = maybeImport("LrPathUtils")
 	if LrPathUtils and LrPathUtils.getStandardFilePath then
-		return LrPathUtils.child(LrPathUtils.getStandardFilePath("appData"), pluginId())
+		return LrPathUtils.child(
+			LrPathUtils.getStandardFilePath("appData"),
+			pluginId()
+		)
 	end
 
 	return "."
@@ -77,7 +80,10 @@ end
 function Config.logFilePath()
 	local LrPathUtils = maybeImport("LrPathUtils")
 	if LrPathUtils and LrPathUtils.child then
-		return LrPathUtils.child(Config.pluginDataDirectory(), Config.logFileName)
+		return LrPathUtils.child(
+			Config.pluginDataDirectory(),
+			Config.logFileName
+		)
 	end
 
 	return Config.pluginDataDirectory() .. "/" .. Config.logFileName
@@ -96,8 +102,14 @@ function Config.ensureDefaults(properties)
 	if blank(properties.jpegQuality) then
 		properties.jpegQuality = Config.defaultJpegQuality
 	end
-	properties.includeUnstarred = normalizeBoolean(properties.includeUnstarred, Config.defaultIncludeUnstarred)
-	properties.includeVirtualCopies = normalizeBoolean(properties.includeVirtualCopies, Config.defaultIncludeVirtualCopies)
+	properties.includeUnstarred = normalizeBoolean(
+		properties.includeUnstarred,
+		Config.defaultIncludeUnstarred
+	)
+	properties.includeVirtualCopies = normalizeBoolean(
+		properties.includeVirtualCopies,
+		Config.defaultIncludeVirtualCopies
+	)
 	if properties.lastRunAt == nil then
 		properties.lastRunAt = "Never"
 	end
@@ -113,14 +125,18 @@ function Config.ensureDefaults(properties)
 end
 
 function Config.refreshDerivedProperties(properties)
-	if properties.outputDirectory == nil or properties.outputDirectory == "" then
+	if
+		properties.outputDirectory == nil
+		or properties.outputDirectory == ""
+	then
 		properties.outputDirectoryDisplay = "Not selected"
 	else
 		properties.outputDirectoryDisplay = properties.outputDirectory
 	end
 	properties.ratingSummary = Config.ratingSummary(properties)
 	properties.canSync = Config.canSync(properties)
-	properties.syncAvailabilitySummary = Config.syncAvailabilitySummary(properties)
+	properties.syncAvailabilitySummary =
+		Config.syncAvailabilitySummary(properties)
 	properties.logFilePath = Config.logFilePath()
 end
 
@@ -143,7 +159,13 @@ function Config.lastRunCleanup(stats, deletedCount, failedCount)
 	)
 end
 
-function Config.lastRunDiagnostic(timestamp, stats, exportedCount, deletedCount, failedCount)
+function Config.lastRunDiagnostic(
+	timestamp,
+	stats,
+	exportedCount,
+	deletedCount,
+	failedCount
+)
 	return string.format(
 		"%s candidates=%d selected=%d exported=%d skipped=%d orphaned=%d deleted=%d failed=%d ignored=%d metadata_missing=%d metadata_mismatched=%d capture_date_missing=%d",
 		timestamp,
@@ -161,11 +183,25 @@ function Config.lastRunDiagnostic(timestamp, stats, exportedCount, deletedCount,
 	)
 end
 
-function Config.updateLastRunProperties(properties, timestamp, stats, exportedCount, deletedCount, failedCount)
+function Config.updateLastRunProperties(
+	properties,
+	timestamp,
+	stats,
+	exportedCount,
+	deletedCount,
+	failedCount
+)
 	properties.lastRunAt = timestamp
 	properties.lastRunResults = Config.lastRunResults(stats, exportedCount)
-	properties.lastRunCleanup = Config.lastRunCleanup(stats, deletedCount, failedCount)
-	properties.lastRunDiagnostic = Config.lastRunDiagnostic(timestamp, stats, exportedCount, deletedCount, failedCount)
+	properties.lastRunCleanup =
+		Config.lastRunCleanup(stats, deletedCount, failedCount)
+	properties.lastRunDiagnostic = Config.lastRunDiagnostic(
+		timestamp,
+		stats,
+		exportedCount,
+		deletedCount,
+		failedCount
+	)
 	Config.refreshDerivedProperties(properties)
 end
 
@@ -218,19 +254,26 @@ end
 
 function Config.canSync(properties)
 	Config.ensureDefaults(properties)
-	if properties.outputDirectory == nil or properties.outputDirectory == "" then
+	if
+		properties.outputDirectory == nil
+		or properties.outputDirectory == ""
+	then
 		return false
 	end
 
 	local minRating = tonumber(properties.minRating) or noStarThreshold
-	return properties.includeUnstarred == true or (minRating >= 1 and minRating <= 5)
+	return properties.includeUnstarred == true
+		or (minRating >= 1 and minRating <= 5)
 end
 
 function Config.syncAvailabilitySummary(properties)
 	if Config.canSync(properties) then
 		return "Ready to sync."
 	end
-	if properties.outputDirectory == nil or properties.outputDirectory == "" then
+	if
+		properties.outputDirectory == nil
+		or properties.outputDirectory == ""
+	then
 		return "Select an output folder."
 	end
 
@@ -239,7 +282,9 @@ end
 
 function Config.outputSettingsFingerprint(config)
 	return table.concat({
-		"exportSettingsVersion=" .. tostring(config.exportSettingsVersion or Config.exportSettingsVersion),
+		"exportSettingsVersion=" .. tostring(
+			config.exportSettingsVersion or Config.exportSettingsVersion
+		),
 		"longEdgePixels=" .. tostring(config.longEdgePixels),
 		"jpegQuality=" .. tostring(config.jpegQuality),
 	}, "|")
@@ -249,8 +294,10 @@ function Config.fromProperties(properties)
 	Config.ensureDefaults(properties)
 
 	local minRating = tonumber(properties.minRating)
-	local longEdgePixels = tonumber(properties.longEdgePixels) or Config.defaultLongEdgePixels
-	local jpegQuality = tonumber(properties.jpegQuality) or Config.defaultJpegQuality
+	local longEdgePixels = tonumber(properties.longEdgePixels)
+		or Config.defaultLongEdgePixels
+	local jpegQuality = tonumber(properties.jpegQuality)
+		or Config.defaultJpegQuality
 
 	if minRating == nil then
 		minRating = Config.defaultMinRating
@@ -264,7 +311,10 @@ function Config.fromProperties(properties)
 	if jpegQuality < 1 or jpegQuality > 100 then
 		return nil, "JPEG quality must be between 1 and 100"
 	end
-	if properties.outputDirectory == nil or properties.outputDirectory == "" then
+	if
+		properties.outputDirectory == nil
+		or properties.outputDirectory == ""
+	then
 		return nil, "output directory is not configured"
 	end
 

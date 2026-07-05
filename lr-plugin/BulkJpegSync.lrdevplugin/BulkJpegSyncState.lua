@@ -1,4 +1,4 @@
-local FileUtils = require "BulkJpegSyncFileUtils"
+local FileUtils = require("BulkJpegSyncFileUtils")
 
 local State = {}
 local backupStateSuffix = ".bak"
@@ -37,7 +37,11 @@ local function serializeValue(value, indent)
 			else
 				keyText = "[" .. serializeValue(key, nextIndent) .. "]"
 			end
-			lines[#lines + 1] = nextIndent .. keyText .. " = " .. serializeValue(child, nextIndent) .. ","
+			lines[#lines + 1] = nextIndent
+				.. keyText
+				.. " = "
+				.. serializeValue(child, nextIndent)
+				.. ","
 		end
 		lines[#lines + 1] = indent .. "}"
 		return table.concat(lines, "\n")
@@ -60,7 +64,10 @@ local function ensureDirectory(path)
 		probe:close()
 		local deletedProbe, deleteProbeErr = FileUtils.deleteFile(probePath)
 		if not deletedProbe then
-			return nil, "failed to delete state directory probe: " .. tostring(deleteProbeErr)
+			return nil,
+				"failed to delete state directory probe: " .. tostring(
+					deleteProbeErr
+				)
 		end
 		return true
 	end
@@ -137,20 +144,34 @@ function State.save(path, state)
 		file:close()
 		local deletedTemp, deleteTempErr = FileUtils.deleteFile(tempPath)
 		if not deletedTemp then
-			return nil, "failed to write temporary state file: " .. tostring(writeErr) .. "; failed to delete temporary state file: " .. tostring(deleteTempErr)
+			return nil,
+				"failed to write temporary state file: "
+					.. tostring(writeErr)
+					.. "; failed to delete temporary state file: "
+					.. tostring(deleteTempErr)
 		end
-		return nil, "failed to write temporary state file: " .. tostring(writeErr)
+		return nil,
+			"failed to write temporary state file: " .. tostring(writeErr)
 	end
 	local closed, closeErr = file:close()
 	if not closed then
 		local deletedTemp, deleteTempErr = FileUtils.deleteFile(tempPath)
 		if not deletedTemp then
-			return nil, "failed to close temporary state file: " .. tostring(closeErr) .. "; failed to delete temporary state file: " .. tostring(deleteTempErr)
+			return nil,
+				"failed to close temporary state file: "
+					.. tostring(closeErr)
+					.. "; failed to delete temporary state file: "
+					.. tostring(deleteTempErr)
 		end
-		return nil, "failed to close temporary state file: " .. tostring(closeErr)
+		return nil,
+			"failed to close temporary state file: " .. tostring(closeErr)
 	end
 
-	local replaced, replaceErr = FileUtils.replaceFile(tempPath, path, { backupPath = path .. backupStateSuffix })
+	local replaced, replaceErr = FileUtils.replaceFile(
+		tempPath,
+		path,
+		{ backupPath = path .. backupStateSuffix }
+	)
 	if not replaced then
 		return nil, "failed to replace state file: " .. tostring(replaceErr)
 	end

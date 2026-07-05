@@ -44,7 +44,8 @@ end
 
 local function dateParts(captureTime)
 	if type(captureTime) == "string" then
-		local year, month, day = captureTime:match("^(%d%d%d%d)%-(%d%d)%-(%d%d)")
+		local year, month, day =
+			captureTime:match("^(%d%d%d%d)%-(%d%d)%-(%d%d)")
 		if year and month and day then
 			return year, year .. "-" .. month .. "-" .. day
 		end
@@ -76,14 +77,25 @@ end
 
 function Path.derivativePath(outputDirectory, photo)
 	local year, day = dateParts(photo.captureTime)
-	local baseName = splitBaseName(photo.fileName or photo.sourcePath or "photo")
+	local baseName =
+		splitBaseName(photo.fileName or photo.sourcePath or "photo")
 	local copyMarker = Path.copyMarker(photo)
 	local suffix = Path.identifierSuffix(photo.identifier)
 	if copyMarker then
-		return pathJoin(outputDirectory, year, day, baseName .. "__" .. copyMarker .. "__lr-" .. suffix .. ".jpg")
+		return pathJoin(
+			outputDirectory,
+			year,
+			day,
+			baseName .. "__" .. copyMarker .. "__lr-" .. suffix .. ".jpg"
+		)
 	end
 
-	return pathJoin(outputDirectory, year, day, baseName .. "__lr-" .. suffix .. ".jpg")
+	return pathJoin(
+		outputDirectory,
+		year,
+		day,
+		baseName .. "__lr-" .. suffix .. ".jpg"
+	)
 end
 
 function Path.temporaryPath(finalPath)

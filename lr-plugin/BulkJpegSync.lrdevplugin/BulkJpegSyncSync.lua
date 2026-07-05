@@ -1,18 +1,18 @@
-local LrApplication = import "LrApplication"
-local LrDialogs = import "LrDialogs"
-local LrPathUtils = import "LrPathUtils"
-local LrPrefs = import "LrPrefs"
-local LrProgressScope = import "LrProgressScope"
+local LrApplication = import("LrApplication")
+local LrDialogs = import("LrDialogs")
+local LrPathUtils = import("LrPathUtils")
+local LrPrefs = import("LrPrefs")
+local LrProgressScope = import("LrProgressScope")
 
-local Catalog = require "BulkJpegSyncCatalog"
-local Config = require "BulkJpegSyncConfig"
-local Exporter = require "BulkJpegSyncExporter"
-local FileUtils = require "BulkJpegSyncFileUtils"
-local Logger = require "BulkJpegSyncLogger"
-local Path = require "BulkJpegSyncPath"
-local Photo = require "BulkJpegSyncPhoto"
-local Scanner = require "BulkJpegSyncScanner"
-local State = require "BulkJpegSyncState"
+local Catalog = require("BulkJpegSyncCatalog")
+local Config = require("BulkJpegSyncConfig")
+local Exporter = require("BulkJpegSyncExporter")
+local FileUtils = require("BulkJpegSyncFileUtils")
+local Logger = require("BulkJpegSyncLogger")
+local Path = require("BulkJpegSyncPath")
+local Photo = require("BulkJpegSyncPhoto")
+local Scanner = require("BulkJpegSyncScanner")
+local State = require("BulkJpegSyncState")
 
 local Sync = {}
 
@@ -38,7 +38,9 @@ local function now()
 end
 
 local function canceled(progressScope)
-	return progressScope and progressScope.isCanceled and progressScope:isCanceled()
+	return progressScope
+		and progressScope.isCanceled
+		and progressScope:isCanceled()
 end
 
 local function finish(progressScope)
@@ -74,7 +76,11 @@ end
 local function captureDatePresentCount(photos, metadata)
 	local count = 0
 	for _, photo in ipairs(photos) do
-		local snapshot = Photo.snapshotFromMetadata(photo, metadata.raw[photo], metadata.formatted[photo])
+		local snapshot = Photo.snapshotFromMetadata(
+			photo,
+			metadata.raw[photo],
+			metadata.formatted[photo]
+		)
 		if not snapshot.captureDateMissing then
 			count = count + 1
 		end
@@ -86,17 +92,42 @@ end
 local function snapshotsFromMetadata(photos, metadata)
 	local snapshots = {}
 	for index, photo in ipairs(photos) do
-		snapshots[index] = Photo.snapshotFromMetadata(photo, metadata.raw[photo], metadata.formatted[photo])
+		snapshots[index] = Photo.snapshotFromMetadata(
+			photo,
+			metadata.raw[photo],
+			metadata.formatted[photo]
+		)
 	end
 
 	return snapshots
 end
 
-local function updateLastRun(activeProperties, prefs, stats, exportedCount, deletedCount, failedCount)
+local function updateLastRun(
+	activeProperties,
+	prefs,
+	stats,
+	exportedCount,
+	deletedCount,
+	failedCount
+)
 	local timestamp = now()
-	Config.updateLastRunProperties(prefs, timestamp, stats, exportedCount, deletedCount, failedCount)
+	Config.updateLastRunProperties(
+		prefs,
+		timestamp,
+		stats,
+		exportedCount,
+		deletedCount,
+		failedCount
+	)
 	if activeProperties and activeProperties ~= prefs then
-		Config.updateLastRunProperties(activeProperties, timestamp, stats, exportedCount, deletedCount, failedCount)
+		Config.updateLastRunProperties(
+			activeProperties,
+			timestamp,
+			stats,
+			exportedCount,
+			deletedCount,
+			failedCount
+		)
 	end
 	Logger.info("sync_completed", {
 		diagnostic = prefs.lastRunDiagnostic,
@@ -151,7 +182,11 @@ function Sync.run(activeProperties)
 		return nil, syncCanceledMessage
 	end
 
-	setProgress(progressScope, "Searching Lightroom catalog", searchProgressDone)
+	setProgress(
+		progressScope,
+		"Searching Lightroom catalog",
+		searchProgressDone
+	)
 	local catalog = LrApplication.activeCatalog()
 	local photos, photosErr = Catalog.findCandidates(catalog, config)
 	if not photos then
@@ -169,7 +204,11 @@ function Sync.run(activeProperties)
 		return nil, syncCanceledMessage
 	end
 
-	setProgress(progressScope, "Reading metadata for " .. tostring(#photos) .. " photos", metadataProgressDone)
+	setProgress(
+		progressScope,
+		"Reading metadata for " .. tostring(#photos) .. " photos",
+		metadataProgressDone
+	)
 	local metadata, metadataErr = Catalog.batchMetadata(catalog, photos)
 	if not metadata then
 		finish(progressScope)
@@ -188,12 +227,20 @@ function Sync.run(activeProperties)
 	end
 
 	setProgress(progressScope, "Planning JPEGs", planProgressStart)
-	local plan, planErr = Scanner.plan(snapshotsFromMetadata(photos, metadata), state, config, Path.derivativePath, Exporter.fileExists, progressScope, {
-		[trustedCatalogSelectionOption] = true,
-		progressStart = planProgressStart,
-		progressEnd = planProgressEnd,
-		progressTotal = progressTotal,
-	})
+	local plan, planErr = Scanner.plan(
+		snapshotsFromMetadata(photos, metadata),
+		state,
+		config,
+		Path.derivativePath,
+		Exporter.fileExists,
+		progressScope,
+		{
+			[trustedCatalogSelectionOption] = true,
+			progressStart = planProgressStart,
+			progressEnd = planProgressEnd,
+			progressTotal = progressTotal,
+		}
+	)
 	if not plan then
 		finish(progressScope)
 		return nil, planErr
@@ -213,17 +260,37 @@ function Sync.run(activeProperties)
 	local failedCount = 0
 	local deletedCount = 0
 
-	setProgress(progressScope, "Deleting orphans 0 of " .. tostring(#plan.orphans), planProgressEnd)
+	setProgress(
+		progressScope,
+		"Deleting orphans 0 of " .. tostring(#plan.orphans),
+		planProgressEnd
+	)
 	for index, orphan in ipairs(plan.orphans) do
 		if canceled(progressScope) then
 			finish(progressScope)
 			Logger.info("sync_canceled", { phase = "deleting_orphans" })
 			return nil, syncCanceledMessage
 		end
-		setProgress(progressScope, "Deleting orphan " .. tostring(index) .. " of " .. tostring(#plan.orphans), phaseProgress(planProgressEnd, cleanupProgressEnd, index - 1, #plan.orphans))
+		setProgress(
+			progressScope,
+			"Deleting orphan "
+				.. tostring(index)
+				.. " of "
+				.. tostring(#plan.orphans),
+			phaseProgress(
+				planProgressEnd,
+				cleanupProgressEnd,
+				index - 1,
+				#plan.orphans
+			)
+		)
 		local outputPath = orphan.record and orphan.record.outputPath
 		local deleteFailed = false
-		if outputPath and outputPath ~= "" and FileUtils.fileExists(outputPath) then
+		if
+			outputPath
+			and outputPath ~= ""
+			and FileUtils.fileExists(outputPath)
+		then
 			local deleted, deleteErr = FileUtils.deleteFile(outputPath)
 			if deleted then
 				deletedCount = deletedCount + 1
@@ -247,7 +314,11 @@ function Sync.run(activeProperties)
 		failed = failedCount,
 	})
 
-	setProgress(progressScope, "Exporting 0 of " .. tostring(#plan.exports), cleanupProgressEnd)
+	setProgress(
+		progressScope,
+		"Exporting 0 of " .. tostring(#plan.exports),
+		cleanupProgressEnd
+	)
 	for index, item in ipairs(plan.exports) do
 		if canceled(progressScope) then
 			finish(progressScope)
@@ -256,8 +327,18 @@ function Sync.run(activeProperties)
 		end
 		setProgress(
 			progressScope,
-			"Exporting " .. tostring(index) .. " of " .. tostring(#plan.exports) .. ": " .. tostring(item.photo.fileName),
-			phaseProgress(cleanupProgressEnd, exportProgressEnd, index - 1, #plan.exports)
+			"Exporting "
+				.. tostring(index)
+				.. " of "
+				.. tostring(#plan.exports)
+				.. ": "
+				.. tostring(item.photo.fileName),
+			phaseProgress(
+				cleanupProgressEnd,
+				exportProgressEnd,
+				index - 1,
+				#plan.exports
+			)
 		)
 		item.configExportSettingsVersion = config.exportSettingsVersion
 		item.configPluginVersionTimestamp = config.pluginVersionTimestamp
@@ -276,7 +357,15 @@ function Sync.run(activeProperties)
 				error = exportErr,
 			})
 		end
-		progressScope:setPortionComplete(phaseProgress(cleanupProgressEnd, exportProgressEnd, index, #plan.exports), progressTotal)
+		progressScope:setPortionComplete(
+			phaseProgress(
+				cleanupProgressEnd,
+				exportProgressEnd,
+				index,
+				#plan.exports
+			),
+			progressTotal
+		)
 	end
 	Logger.info("export_completed", {
 		planned = #plan.exports,
@@ -291,7 +380,14 @@ function Sync.run(activeProperties)
 		return nil, saveErr
 	end
 
-	updateLastRun(activeProperties, prefs, plan.stats, exportedCount, deletedCount, failedCount)
+	updateLastRun(
+		activeProperties,
+		prefs,
+		plan.stats,
+		exportedCount,
+		deletedCount,
+		failedCount
+	)
 	if failedCount > 0 then
 		LrDialogs.message(
 			"Bulk JPEG Sync completed with failures",

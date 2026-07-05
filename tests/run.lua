@@ -1,20 +1,28 @@
-package.path = "lr-plugin/BulkJpegSync.lrdevplugin/?.lua;tests/?.lua;" .. package.path
+package.path = "lr-plugin/BulkJpegSync.lrdevplugin/?.lua;tests/?.lua;"
+	.. package.path
 
-local Catalog = require "BulkJpegSyncCatalog"
-local Config = require "BulkJpegSyncConfig"
-local Exporter = require "BulkJpegSyncExporter"
-local FileUtils = require "BulkJpegSyncFileUtils"
-local Logger = require "BulkJpegSyncLogger"
-local Path = require "BulkJpegSyncPath"
-local Photo = require "BulkJpegSyncPhoto"
-local Scanner = require "BulkJpegSyncScanner"
-local State = require "BulkJpegSyncState"
+local Catalog = require("BulkJpegSyncCatalog")
+local Config = require("BulkJpegSyncConfig")
+local Exporter = require("BulkJpegSyncExporter")
+local FileUtils = require("BulkJpegSyncFileUtils")
+local Logger = require("BulkJpegSyncLogger")
+local Path = require("BulkJpegSyncPath")
+local Photo = require("BulkJpegSyncPhoto")
+local Scanner = require("BulkJpegSyncScanner")
+local State = require("BulkJpegSyncState")
 
 local tests = {}
 
 local function assertEqual(actual, expected, message)
 	if actual ~= expected then
-		error((message or "values differ") .. ": expected " .. tostring(expected) .. ", got " .. tostring(actual), 2)
+		error(
+			(message or "values differ")
+				.. ": expected "
+				.. tostring(expected)
+				.. ", got "
+				.. tostring(actual),
+			2
+		)
 	end
 end
 
@@ -31,19 +39,35 @@ local function assertNil(value, message)
 end
 
 local function assertPlanStats(actual, expected)
-	assertEqual(actual.candidates, expected.candidates, "candidate count differs")
+	assertEqual(
+		actual.candidates,
+		expected.candidates,
+		"candidate count differs"
+	)
 	assertEqual(actual.selected, expected.selected, "selected count differs")
 	assertEqual(actual.skipped, expected.skipped, "skipped count differs")
 	assertEqual(actual.orphaned, expected.orphaned, "orphaned count differs")
 	assertEqual(actual.ignored, expected.ignored, "ignored count differs")
 	if expected.metadataMissing ~= nil then
-		assertEqual(actual.metadataMissing, expected.metadataMissing, "metadata missing count differs")
+		assertEqual(
+			actual.metadataMissing,
+			expected.metadataMissing,
+			"metadata missing count differs"
+		)
 	end
 	if expected.metadataMismatched ~= nil then
-		assertEqual(actual.metadataMismatched, expected.metadataMismatched, "metadata mismatch count differs")
+		assertEqual(
+			actual.metadataMismatched,
+			expected.metadataMismatched,
+			"metadata mismatch count differs"
+		)
 	end
 	if expected.captureDateMissing ~= nil then
-		assertEqual(actual.captureDateMissing, expected.captureDateMissing, "capture date missing count differs")
+		assertEqual(
+			actual.captureDateMissing,
+			expected.captureDateMissing,
+			"capture date missing count differs"
+		)
 	end
 end
 
@@ -156,7 +180,8 @@ local function containsValue(values, expected)
 end
 
 function tests.catalog_search_description_filters_threshold_and_rejected()
-	local desc = Catalog.searchDescription({ minRating = 4, includeUnstarred = false })
+	local desc =
+		Catalog.searchDescription({ minRating = 4, includeUnstarred = false })
 
 	assertEqual(desc.combine, "intersect")
 	assertEqual(desc[1].criteria, "pick")
@@ -168,7 +193,8 @@ function tests.catalog_search_description_filters_threshold_and_rejected()
 end
 
 function tests.catalog_search_description_filters_unstarred_only()
-	local desc = Catalog.searchDescription({ minRating = nil, includeUnstarred = true })
+	local desc =
+		Catalog.searchDescription({ minRating = nil, includeUnstarred = true })
 
 	assertEqual(desc.combine, "intersect")
 	assertEqual(desc[2].criteria, "rating")
@@ -177,7 +203,8 @@ function tests.catalog_search_description_filters_unstarred_only()
 end
 
 function tests.catalog_search_description_unions_unstarred_and_threshold()
-	local desc = Catalog.searchDescription({ minRating = 3, includeUnstarred = true })
+	local desc =
+		Catalog.searchDescription({ minRating = 3, includeUnstarred = true })
 
 	assertEqual(desc.combine, "intersect")
 	assertEqual(desc[2].combine, "union")
@@ -198,7 +225,10 @@ function tests.catalog_find_candidates_uses_find_photos()
 		end,
 	}
 
-	local photos, err = Catalog.findCandidates(catalog, { minRating = 5, includeUnstarred = false })
+	local photos, err = Catalog.findCandidates(
+		catalog,
+		{ minRating = 5, includeUnstarred = false }
+	)
 
 	assertTrue(photos, err)
 	assertEqual(photos[1], "photo")
@@ -258,7 +288,10 @@ function tests.path_generation_marks_named_virtual_copies()
 		copyName = "Black/White",
 	})
 
-	assertEqual(path, "/out/2025/2025-09-03/IMG_1234__copy-Black-White__lr-copy-123.jpg")
+	assertEqual(
+		path,
+		"/out/2025/2025-09-03/IMG_1234__copy-Black-White__lr-copy-123.jpg"
+	)
 end
 
 function tests.path_generation_marks_numbered_virtual_copies()
@@ -383,82 +416,229 @@ function tests.photo_snapshot_derives_filename_from_source_path()
 end
 
 function tests.scanner_filters_rating_rejected_and_virtual_copy()
-	local config = { outputDirectory = "/out", minRating = 3, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local config = {
+		outputDirectory = "/out",
+		minRating = 3,
+		includeUnstarred = false,
+		includeVirtualCopies = false,
+		exportSettingsVersion = 1,
+	}
 	local state = State.empty()
-	local planned = Scanner.plan({
-		{ identifier = "a", fileName = "a.jpg", rating = 3, isRejected = false, isVirtualCopy = false },
-		{ identifier = "b", fileName = "b.jpg", rating = 2, isRejected = false, isVirtualCopy = false },
-		{ identifier = "c", fileName = "c.jpg", rating = 5, isRejected = true, isVirtualCopy = false },
-		{ identifier = "d", fileName = "d.jpg", rating = 5, isRejected = false, isVirtualCopy = true },
-	}, state, config, Path.derivativePath, function()
-		return false
-	end)
+	local planned = Scanner.plan(
+		{
+			{
+				identifier = "a",
+				fileName = "a.jpg",
+				rating = 3,
+				isRejected = false,
+				isVirtualCopy = false,
+			},
+			{
+				identifier = "b",
+				fileName = "b.jpg",
+				rating = 2,
+				isRejected = false,
+				isVirtualCopy = false,
+			},
+			{
+				identifier = "c",
+				fileName = "c.jpg",
+				rating = 5,
+				isRejected = true,
+				isVirtualCopy = false,
+			},
+			{
+				identifier = "d",
+				fileName = "d.jpg",
+				rating = 5,
+				isRejected = false,
+				isVirtualCopy = true,
+			},
+		},
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return false
+		end
+	)
 
 	assertEqual(#planned.exports, 1)
 	assertEqual(planned.exports[1].photo.identifier, "a")
-	assertPlanStats(planned.stats, { candidates = 4, selected = 1, skipped = 0, orphaned = 0, ignored = 3 })
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 4, selected = 1, skipped = 0, orphaned = 0, ignored = 3 }
+	)
 end
 
 function tests.scanner_includes_unstarred_when_enabled()
-	local config = { outputDirectory = "/out", minRating = 3, includeUnstarred = true, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local config = {
+		outputDirectory = "/out",
+		minRating = 3,
+		includeUnstarred = true,
+		includeVirtualCopies = false,
+		exportSettingsVersion = 1,
+	}
 	local state = State.empty()
-	local planned = Scanner.plan({
-		{ identifier = "a", fileName = "a.jpg", rating = 0, isRejected = false, isVirtualCopy = false },
-		{ identifier = "b", fileName = "b.jpg", rating = 2, isRejected = false, isVirtualCopy = false },
-	}, state, config, Path.derivativePath, function()
-		return false
-	end)
+	local planned = Scanner.plan(
+		{
+			{
+				identifier = "a",
+				fileName = "a.jpg",
+				rating = 0,
+				isRejected = false,
+				isVirtualCopy = false,
+			},
+			{
+				identifier = "b",
+				fileName = "b.jpg",
+				rating = 2,
+				isRejected = false,
+				isVirtualCopy = false,
+			},
+		},
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return false
+		end
+	)
 
 	assertEqual(#planned.exports, 1)
 	assertEqual(planned.exports[1].photo.identifier, "a")
-	assertPlanStats(planned.stats, { candidates = 2, selected = 1, skipped = 0, orphaned = 0, ignored = 1 })
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 2, selected = 1, skipped = 0, orphaned = 0, ignored = 1 }
+	)
 end
 
 function tests.scanner_includes_only_unstarred_without_star_threshold()
-	local config = { outputDirectory = "/out", minRating = nil, includeUnstarred = true, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local config = {
+		outputDirectory = "/out",
+		minRating = nil,
+		includeUnstarred = true,
+		includeVirtualCopies = false,
+		exportSettingsVersion = 1,
+	}
 	local state = State.empty()
-	local planned = Scanner.plan({
-		{ identifier = "a", fileName = "a.jpg", rating = 0, isRejected = false, isVirtualCopy = false },
-		{ identifier = "b", fileName = "b.jpg", rating = 5, isRejected = false, isVirtualCopy = false },
-	}, state, config, Path.derivativePath, function()
-		return false
-	end)
+	local planned = Scanner.plan(
+		{
+			{
+				identifier = "a",
+				fileName = "a.jpg",
+				rating = 0,
+				isRejected = false,
+				isVirtualCopy = false,
+			},
+			{
+				identifier = "b",
+				fileName = "b.jpg",
+				rating = 5,
+				isRejected = false,
+				isVirtualCopy = false,
+			},
+		},
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return false
+		end
+	)
 
 	assertEqual(#planned.exports, 1)
 	assertEqual(planned.exports[1].photo.identifier, "a")
-	assertPlanStats(planned.stats, { candidates = 2, selected = 1, skipped = 0, orphaned = 0, ignored = 1 })
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 2, selected = 1, skipped = 0, orphaned = 0, ignored = 1 }
+	)
 end
 
 function tests.scanner_includes_nothing_without_any_rating_selection()
-	local config = { outputDirectory = "/out", minRating = nil, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local config = {
+		outputDirectory = "/out",
+		minRating = nil,
+		includeUnstarred = false,
+		includeVirtualCopies = false,
+		exportSettingsVersion = 1,
+	}
 	local state = State.empty()
-	local planned = Scanner.plan({
-		{ identifier = "a", fileName = "a.jpg", rating = 0, isRejected = false, isVirtualCopy = false },
-		{ identifier = "b", fileName = "b.jpg", rating = 5, isRejected = false, isVirtualCopy = false },
-	}, state, config, Path.derivativePath, function()
-		return false
-	end)
+	local planned = Scanner.plan(
+		{
+			{
+				identifier = "a",
+				fileName = "a.jpg",
+				rating = 0,
+				isRejected = false,
+				isVirtualCopy = false,
+			},
+			{
+				identifier = "b",
+				fileName = "b.jpg",
+				rating = 5,
+				isRejected = false,
+				isVirtualCopy = false,
+			},
+		},
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return false
+		end
+	)
 
 	assertEqual(#planned.exports, 0)
-	assertPlanStats(planned.stats, { candidates = 2, selected = 0, skipped = 0, orphaned = 0, ignored = 2 })
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 2, selected = 0, skipped = 0, orphaned = 0, ignored = 2 }
+	)
 end
 
 function tests.scanner_includes_virtual_copies_when_enabled()
-	local config = { outputDirectory = "/out", minRating = 3, includeUnstarred = false, includeVirtualCopies = true, exportSettingsVersion = 1 }
+	local config = {
+		outputDirectory = "/out",
+		minRating = 3,
+		includeUnstarred = false,
+		includeVirtualCopies = true,
+		exportSettingsVersion = 1,
+	}
 	local state = State.empty()
-	local planned = Scanner.plan({
-		{ identifier = "a", fileName = "a.jpg", rating = 5, isRejected = false, isVirtualCopy = true },
-	}, state, config, Path.derivativePath, function()
-		return false
-	end)
+	local planned = Scanner.plan(
+		{
+			{
+				identifier = "a",
+				fileName = "a.jpg",
+				rating = 5,
+				isRejected = false,
+				isVirtualCopy = true,
+			},
+		},
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return false
+		end
+	)
 
 	assertEqual(#planned.exports, 1)
 	assertEqual(planned.exports[1].photo.identifier, "a")
-	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 })
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 }
+	)
 end
 
 function tests.scanner_plan_can_be_canceled()
-	local config = { outputDirectory = "/out", minRating = 3, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local config = {
+		outputDirectory = "/out",
+		minRating = 3,
+		includeUnstarred = false,
+		includeVirtualCopies = false,
+		exportSettingsVersion = 1,
+	}
 	local state = State.empty()
 	local progressScope = {
 		isCanceled = function()
@@ -466,18 +646,37 @@ function tests.scanner_plan_can_be_canceled()
 		end,
 	}
 
-	local planned, err = Scanner.plan({
-		{ identifier = "a", fileName = "a.jpg", rating = 3, isRejected = false, isVirtualCopy = false },
-	}, state, config, Path.derivativePath, function()
-		return false
-	end, progressScope)
+	local planned, err = Scanner.plan(
+		{
+			{
+				identifier = "a",
+				fileName = "a.jpg",
+				rating = 3,
+				isRejected = false,
+				isVirtualCopy = false,
+			},
+		},
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return false
+		end,
+		progressScope
+	)
 
 	assertNil(planned)
 	assertEqual(err, "sync canceled")
 end
 
 function tests.scanner_plan_updates_progress_scope()
-	local config = { outputDirectory = "/out", minRating = 3, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local config = {
+		outputDirectory = "/out",
+		minRating = 3,
+		includeUnstarred = false,
+		includeVirtualCopies = false,
+		exportSettingsVersion = 1,
+	}
 	local state = State.empty()
 	local captions = {}
 	local progressScope = {
@@ -487,25 +686,43 @@ function tests.scanner_plan_updates_progress_scope()
 		setCaption = function(_, caption)
 			captions[#captions + 1] = caption
 		end,
-		setPortionComplete = function()
-		end,
+		setPortionComplete = function() end,
 	}
 
 	local photos = {}
 	for index = 1, 100 do
-		photos[index] = { identifier = "a" .. tostring(index), fileName = "a.jpg", rating = 3, isRejected = false, isVirtualCopy = false }
+		photos[index] = {
+			identifier = "a" .. tostring(index),
+			fileName = "a.jpg",
+			rating = 3,
+			isRejected = false,
+			isVirtualCopy = false,
+		}
 	end
 
-	local planned, err = Scanner.plan(photos, state, config, Path.derivativePath, function()
-		return false
-	end, progressScope)
+	local planned, err = Scanner.plan(
+		photos,
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return false
+		end,
+		progressScope
+	)
 
 	assertTrue(planned, err)
 	assertTrue(#captions >= 1)
 end
 
 function tests.scanner_reuses_existing_output_path()
-	local config = { outputDirectory = "/new", minRating = 3, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local config = {
+		outputDirectory = "/new",
+		minRating = 3,
+		includeUnstarred = false,
+		includeVirtualCopies = false,
+		exportSettingsVersion = 1,
+	}
 	local state = State.empty()
 	state.photos.a = {
 		outputPath = "/old/kept.jpg",
@@ -514,29 +731,63 @@ function tests.scanner_reuses_existing_output_path()
 		exportSettingsVersion = 1,
 	}
 
-	local planned = Scanner.plan({
-		{ identifier = "a", sourcePath = "a.raw", fileName = "renamed.raw", rating = 5, isRejected = false, isVirtualCopy = false },
-	}, state, config, Path.derivativePath, function()
-		return true
-	end)
+	local planned = Scanner.plan(
+		{
+			{
+				identifier = "a",
+				sourcePath = "a.raw",
+				fileName = "renamed.raw",
+				rating = 5,
+				isRejected = false,
+				isVirtualCopy = false,
+			},
+		},
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return true
+		end
+	)
 
 	assertEqual(planned.exports[1].outputPath, "/old/kept.jpg")
 end
 
 function tests.scanner_marks_existing_below_threshold_as_orphan()
-	local config = { outputDirectory = "/out", minRating = 3, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local config = {
+		outputDirectory = "/out",
+		minRating = 3,
+		includeUnstarred = false,
+		includeVirtualCopies = false,
+		exportSettingsVersion = 1,
+	}
 	local state = State.empty()
 	state.photos.a = { outputPath = "/out/a.jpg", status = "exported" }
 
-	local planned = Scanner.plan({
-		{ identifier = "a", fileName = "a.jpg", rating = 1, isRejected = false, isVirtualCopy = false },
-	}, state, config, Path.derivativePath, function()
-		return true
-	end)
+	local planned = Scanner.plan(
+		{
+			{
+				identifier = "a",
+				fileName = "a.jpg",
+				rating = 1,
+				isRejected = false,
+				isVirtualCopy = false,
+			},
+		},
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return true
+		end
+	)
 
 	assertEqual(#planned.orphans, 1)
 	assertEqual(planned.orphans[1].photo.identifier, "a")
-	assertPlanStats(planned.stats, { candidates = 1, selected = 0, skipped = 0, orphaned = 1, ignored = 0 })
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 1, selected = 0, skipped = 0, orphaned = 1, ignored = 0 }
+	)
 end
 
 function tests.scanner_skips_when_unchanged_and_file_exists()
@@ -563,12 +814,21 @@ function tests.scanner_skips_when_unchanged_and_file_exists()
 		lastExportTime = "2026-07-05T07:21:00Z",
 	}
 
-	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
-		return true
-	end)
+	local planned = Scanner.plan(
+		{ photo },
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return true
+		end
+	)
 
 	assertEqual(#planned.exports, 0)
-	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 1, orphaned = 0, ignored = 0 })
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 1, selected = 1, skipped = 1, orphaned = 0, ignored = 0 }
+	)
 end
 
 function tests.scanner_skips_when_matching_epochs_are_newer_than_last_export_time()
@@ -595,12 +855,21 @@ function tests.scanner_skips_when_matching_epochs_are_newer_than_last_export_tim
 		lastExportTime = "2026-07-05T07:19:59Z",
 	}
 
-	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
-		return true
-	end)
+	local planned = Scanner.plan(
+		{ photo },
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return true
+		end
+	)
 
 	assertEqual(#planned.exports, 0)
-	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 1, orphaned = 0, ignored = 0 })
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 1, selected = 1, skipped = 1, orphaned = 0, ignored = 0 }
+	)
 end
 
 function tests.scanner_exports_legacy_record_older_than_plugin_version()
@@ -625,16 +894,26 @@ function tests.scanner_exports_legacy_record_older_than_plugin_version()
 		lastExportTime = "2026-07-05T07:19:59Z",
 	}
 
-	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
-		return true
-	end)
+	local planned = Scanner.plan(
+		{ photo },
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return true
+		end
+	)
 
 	assertEqual(#planned.exports, 1)
-	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 })
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 }
+	)
 end
 
 function tests.scanner_exports_legacy_record_older_than_output_settings()
-	local config = syncConfig({ pluginVersionTimestamp = "2026-07-05T07:00:00Z" })
+	local config =
+		syncConfig({ pluginVersionTimestamp = "2026-07-05T07:00:00Z" })
 	local state = State.empty()
 	local photo = {
 		identifier = "a",
@@ -655,12 +934,21 @@ function tests.scanner_exports_legacy_record_older_than_output_settings()
 		lastExportTime = "2026-07-05T07:19:59Z",
 	}
 
-	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
-		return true
-	end)
+	local planned = Scanner.plan(
+		{ photo },
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return true
+		end
+	)
 
 	assertEqual(#planned.exports, 1)
-	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 })
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 }
+	)
 end
 
 function tests.scanner_exports_when_plugin_epoch_differs()
@@ -687,12 +975,21 @@ function tests.scanner_exports_when_plugin_epoch_differs()
 		lastExportTime = "2026-07-05T07:21:00Z",
 	}
 
-	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
-		return true
-	end)
+	local planned = Scanner.plan(
+		{ photo },
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return true
+		end
+	)
 
 	assertEqual(#planned.exports, 1)
-	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 })
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 }
+	)
 end
 
 function tests.scanner_exports_when_output_settings_epoch_differs()
@@ -719,12 +1016,21 @@ function tests.scanner_exports_when_output_settings_epoch_differs()
 		lastExportTime = "2026-07-05T07:21:00Z",
 	}
 
-	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
-		return true
-	end)
+	local planned = Scanner.plan(
+		{ photo },
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return true
+		end
+	)
 
 	assertEqual(#planned.exports, 1)
-	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 })
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 }
+	)
 end
 
 function tests.scanner_exports_when_output_settings_fingerprint_differs()
@@ -749,16 +1055,31 @@ function tests.scanner_exports_when_output_settings_fingerprint_differs()
 		lastExportTime = "2026-07-05T07:21:00Z",
 	}
 
-	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
-		return true
-	end)
+	local planned = Scanner.plan(
+		{ photo },
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return true
+		end
+	)
 
 	assertEqual(#planned.exports, 1)
-	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 })
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 }
+	)
 end
 
 function tests.scanner_marks_exported_records_absent_from_candidates_as_orphans()
-	local config = { outputDirectory = "/out", minRating = 5, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local config = {
+		outputDirectory = "/out",
+		minRating = 5,
+		includeUnstarred = false,
+		includeVirtualCopies = false,
+		exportSettingsVersion = 1,
+	}
 	local state = State.empty()
 	local photos = {}
 
@@ -790,69 +1111,183 @@ function tests.scanner_marks_exported_records_absent_from_candidates_as_orphans(
 		exportSettingsVersion = 1,
 	}
 
-	local planned = Scanner.plan(photos, state, config, Path.derivativePath, function()
-		return true
-	end)
+	local planned = Scanner.plan(
+		photos,
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return true
+		end
+	)
 
 	assertEqual(#planned.exports, 0)
 	assertEqual(#planned.orphans, 1)
 	assertEqual(planned.orphans[1].identifier, "absent")
-	assertPlanStats(planned.stats, { candidates = 5, selected = 5, skipped = 5, orphaned = 1, ignored = 0 })
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 5, selected = 5, skipped = 5, orphaned = 1, ignored = 0 }
+	)
 end
 
 function tests.scanner_stats_count_selected_exports_without_skipping()
-	local config = { outputDirectory = "/out", minRating = 5, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local config = {
+		outputDirectory = "/out",
+		minRating = 5,
+		includeUnstarred = false,
+		includeVirtualCopies = false,
+		exportSettingsVersion = 1,
+	}
 	local state = State.empty()
-	local planned = Scanner.plan({
-		{ identifier = "a", sourcePath = "a.raw", fileName = "a.raw", rating = 5, isRejected = false, isVirtualCopy = false },
-	}, state, config, Path.derivativePath, function()
-		return false
-	end)
+	local planned = Scanner.plan(
+		{
+			{
+				identifier = "a",
+				sourcePath = "a.raw",
+				fileName = "a.raw",
+				rating = 5,
+				isRejected = false,
+				isVirtualCopy = false,
+			},
+		},
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return false
+		end
+	)
 
 	assertEqual(#planned.exports, 1)
-	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 })
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 }
+	)
 end
 
 function tests.scanner_trusts_catalog_selection_when_rating_metadata_is_missing()
-	local config = { outputDirectory = "/out", minRating = 5, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local config = {
+		outputDirectory = "/out",
+		minRating = 5,
+		includeUnstarred = false,
+		includeVirtualCopies = false,
+		exportSettingsVersion = 1,
+	}
 	local state = State.empty()
 	local photo = Photo.snapshot(fakeLightroomPhoto({
 		localIdentifier = "a",
 		path = "/photos/a.raw",
 	}, {}))
-	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
-		return false
-	end, nil, { trustedCatalogSelection = true })
+	local planned = Scanner.plan(
+		{ photo },
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return false
+		end,
+		nil,
+		{ trustedCatalogSelection = true }
+	)
 
 	assertEqual(#planned.exports, 1)
 	assertEqual(planned.exports[1].photo.identifier, "a")
-	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0, metadataMissing = 1, metadataMismatched = 0, captureDateMissing = 1 })
+	assertPlanStats(planned.stats, {
+		candidates = 1,
+		selected = 1,
+		skipped = 0,
+		orphaned = 0,
+		ignored = 0,
+		metadataMissing = 1,
+		metadataMismatched = 0,
+		captureDateMissing = 1,
+	})
 end
 
 function tests.scanner_trusted_catalog_selection_still_excludes_virtual_copies()
-	local config = { outputDirectory = "/out", minRating = 5, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local config = {
+		outputDirectory = "/out",
+		minRating = 5,
+		includeUnstarred = false,
+		includeVirtualCopies = false,
+		exportSettingsVersion = 1,
+	}
 	local state = State.empty()
-	local planned = Scanner.plan({
-		{ identifier = "a", sourcePath = "a.raw", fileName = "a.raw", rating = 5, isRejected = false, isVirtualCopy = true },
-	}, state, config, Path.derivativePath, function()
-		return false
-	end, nil, { trustedCatalogSelection = true })
+	local planned = Scanner.plan(
+		{
+			{
+				identifier = "a",
+				sourcePath = "a.raw",
+				fileName = "a.raw",
+				rating = 5,
+				isRejected = false,
+				isVirtualCopy = true,
+			},
+		},
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return false
+		end,
+		nil,
+		{ trustedCatalogSelection = true }
+	)
 
 	assertEqual(#planned.exports, 0)
-	assertPlanStats(planned.stats, { candidates = 1, selected = 0, skipped = 0, orphaned = 0, ignored = 1, metadataMissing = 0, metadataMismatched = 0, captureDateMissing = 0 })
+	assertPlanStats(planned.stats, {
+		candidates = 1,
+		selected = 0,
+		skipped = 0,
+		orphaned = 0,
+		ignored = 1,
+		metadataMissing = 0,
+		metadataMismatched = 0,
+		captureDateMissing = 0,
+	})
 end
 
 function tests.scanner_trusted_catalog_selection_counts_metadata_mismatches()
-	local config = { outputDirectory = "/out", minRating = 5, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local config = {
+		outputDirectory = "/out",
+		minRating = 5,
+		includeUnstarred = false,
+		includeVirtualCopies = false,
+		exportSettingsVersion = 1,
+	}
 	local state = State.empty()
-	local planned = Scanner.plan({
-		{ identifier = "a", sourcePath = "a.raw", fileName = "a.raw", rating = 1, isRejected = false, isVirtualCopy = false },
-	}, state, config, Path.derivativePath, function()
-		return false
-	end, nil, { trustedCatalogSelection = true })
+	local planned = Scanner.plan(
+		{
+			{
+				identifier = "a",
+				sourcePath = "a.raw",
+				fileName = "a.raw",
+				rating = 1,
+				isRejected = false,
+				isVirtualCopy = false,
+			},
+		},
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return false
+		end,
+		nil,
+		{ trustedCatalogSelection = true }
+	)
 
 	assertEqual(#planned.exports, 1)
-	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0, metadataMissing = 0, metadataMismatched = 1, captureDateMissing = 0 })
+	assertPlanStats(planned.stats, {
+		candidates = 1,
+		selected = 1,
+		skipped = 0,
+		orphaned = 0,
+		ignored = 0,
+		metadataMissing = 0,
+		metadataMismatched = 1,
+		captureDateMissing = 0,
+	})
 end
 
 function tests.config_defaults_are_visible()
@@ -898,7 +1333,10 @@ function tests.config_output_settings_fingerprint_tracks_rendering_settings()
 		jpegQuality = 85,
 	})
 
-	assertEqual(fingerprint, "exportSettingsVersion=2|longEdgePixels=3200|jpegQuality=85")
+	assertEqual(
+		fingerprint,
+		"exportSettingsVersion=2|longEdgePixels=3200|jpegQuality=85"
+	)
 end
 
 function tests.config_toggle_same_rating_clears_threshold()
@@ -907,46 +1345,104 @@ function tests.config_toggle_same_rating_clears_threshold()
 end
 
 function tests.config_rating_summary_describes_default_threshold()
-	assertEqual(Config.ratingSummary({ minRating = 3, includeUnstarred = false }), "Selected: 3+")
+	assertEqual(
+		Config.ratingSummary({ minRating = 3, includeUnstarred = false }),
+		"Selected: 3+"
+	)
 end
 
 function tests.config_rating_summary_describes_unstarred_and_threshold()
-	assertEqual(Config.ratingSummary({ minRating = 3, includeUnstarred = true }), "Selected: unstarred, 3+")
+	assertEqual(
+		Config.ratingSummary({ minRating = 3, includeUnstarred = true }),
+		"Selected: unstarred, 3+"
+	)
 end
 
 function tests.config_rating_summary_describes_unstarred_only()
-	assertEqual(Config.ratingSummary({ minRating = 0, includeUnstarred = true }), "Selected: unstarred only")
+	assertEqual(
+		Config.ratingSummary({ minRating = 0, includeUnstarred = true }),
+		"Selected: unstarred only"
+	)
 end
 
 function tests.config_rating_summary_describes_empty_selection()
-	assertEqual(Config.ratingSummary({ minRating = 0, includeUnstarred = false }), "Selected: none")
+	assertEqual(
+		Config.ratingSummary({ minRating = 0, includeUnstarred = false }),
+		"Selected: none"
+	)
 end
 
 function tests.config_can_sync_requires_output_folder()
-	assertEqual(Config.canSync({ outputDirectory = "", minRating = 3, includeUnstarred = false }), false)
-	assertEqual(Config.syncAvailabilitySummary({ outputDirectory = "", minRating = 3, includeUnstarred = false }), "Select an output folder.")
+	assertEqual(
+		Config.canSync({
+			outputDirectory = "",
+			minRating = 3,
+			includeUnstarred = false,
+		}),
+		false
+	)
+	assertEqual(
+		Config.syncAvailabilitySummary({
+			outputDirectory = "",
+			minRating = 3,
+			includeUnstarred = false,
+		}),
+		"Select an output folder."
+	)
 end
 
 function tests.config_can_sync_with_default_star_threshold()
-	assertEqual(Config.canSync({ outputDirectory = "/out", minRating = 3, includeUnstarred = false }), true)
-	assertEqual(Config.syncAvailabilitySummary({ outputDirectory = "/out", minRating = 3, includeUnstarred = false }), "Ready to sync.")
+	assertEqual(
+		Config.canSync({
+			outputDirectory = "/out",
+			minRating = 3,
+			includeUnstarred = false,
+		}),
+		true
+	)
+	assertEqual(
+		Config.syncAvailabilitySummary({
+			outputDirectory = "/out",
+			minRating = 3,
+			includeUnstarred = false,
+		}),
+		"Ready to sync."
+	)
 end
 
 function tests.config_can_sync_with_unstarred_only()
-	assertEqual(Config.canSync({ outputDirectory = "/out", minRating = 0, includeUnstarred = true }), true)
+	assertEqual(
+		Config.canSync({
+			outputDirectory = "/out",
+			minRating = 0,
+			includeUnstarred = true,
+		}),
+		true
+	)
 end
 
 function tests.config_can_sync_rejects_empty_rating_selection()
-	local properties = { outputDirectory = "/out", minRating = 0, includeUnstarred = false }
+	local properties =
+		{ outputDirectory = "/out", minRating = 0, includeUnstarred = false }
 	assertEqual(Config.canSync(properties), false)
-	assertEqual(Config.syncAvailabilitySummary(properties), "Select unstarred or a star threshold.")
+	assertEqual(
+		Config.syncAvailabilitySummary(properties),
+		"Select unstarred or a star threshold."
+	)
 end
 
 function tests.config_formats_last_run_fields()
-	local stats = { candidates = 5, selected = 5, skipped = 4, orphaned = 2, ignored = 1 }
+	local stats =
+		{ candidates = 5, selected = 5, skipped = 4, orphaned = 2, ignored = 1 }
 
-	assertEqual(Config.lastRunResults(stats, 1), "candidates 5, selected 5, exported 1, skipped 4")
-	assertEqual(Config.lastRunCleanup(stats, 2, 1), "orphaned 2, deleted 2, failed 1")
+	assertEqual(
+		Config.lastRunResults(stats, 1),
+		"candidates 5, selected 5, exported 1, skipped 4"
+	)
+	assertEqual(
+		Config.lastRunCleanup(stats, 2, 1),
+		"orphaned 2, deleted 2, failed 1"
+	)
 	assertEqual(
 		Config.lastRunDiagnostic("2026-07-05T10:11:12Z", stats, 1, 2, 1),
 		"2026-07-05T10:11:12Z candidates=5 selected=5 exported=1 skipped=4 orphaned=2 deleted=2 failed=1 ignored=1 metadata_missing=0 metadata_mismatched=0 capture_date_missing=0"
@@ -954,13 +1450,33 @@ function tests.config_formats_last_run_fields()
 end
 
 function tests.config_updates_last_run_properties()
-	local stats = { candidates = 5, selected = 4, skipped = 3, orphaned = 2, ignored = 1, metadataMissing = 6, metadataMismatched = 7, captureDateMissing = 8 }
-	local properties = { outputDirectory = "/out", minRating = 3, includeUnstarred = false }
+	local stats = {
+		candidates = 5,
+		selected = 4,
+		skipped = 3,
+		orphaned = 2,
+		ignored = 1,
+		metadataMissing = 6,
+		metadataMismatched = 7,
+		captureDateMissing = 8,
+	}
+	local properties =
+		{ outputDirectory = "/out", minRating = 3, includeUnstarred = false }
 
-	Config.updateLastRunProperties(properties, "2026-07-05T10:11:12Z", stats, 1, 2, 3)
+	Config.updateLastRunProperties(
+		properties,
+		"2026-07-05T10:11:12Z",
+		stats,
+		1,
+		2,
+		3
+	)
 
 	assertEqual(properties.lastRunAt, "2026-07-05T10:11:12Z")
-	assertEqual(properties.lastRunResults, "candidates 5, selected 4, exported 1, skipped 3")
+	assertEqual(
+		properties.lastRunResults,
+		"candidates 5, selected 4, exported 1, skipped 3"
+	)
 	assertEqual(properties.lastRunCleanup, "orphaned 2, deleted 2, failed 3")
 	assertEqual(
 		properties.lastRunDiagnostic,
@@ -1007,17 +1523,16 @@ function tests.logger_writes_plugin_owned_log_file()
 		},
 		LrLogger = function()
 			return {
-				enable = function()
-				end,
-				info = function()
-				end,
+				enable = function() end,
+				info = function() end,
 			}
 		end,
 	}, function()
 		Logger.info("test_event", { photo = "abc" })
 	end)
 
-	local file = io.open(path .. "/fi.iki.fingon.bulk-jpeg-sync/bulk-jpeg-sync.log", "r")
+	local file =
+		io.open(path .. "/fi.iki.fingon.bulk-jpeg-sync/bulk-jpeg-sync.log", "r")
 	assertTrue(file, "expected plugin log file")
 	local contents = file:read("*a")
 	file:close()
@@ -1067,7 +1582,11 @@ function tests.file_utils_replace_backs_up_existing_target()
 	local fake = fakeFileUtils(files)
 
 	withFakeImport("LrFileUtils", fake, function()
-		local ok, err = FileUtils.replaceFile("/source", "/target", { backupPath = "/target.bak" })
+		local ok, err = FileUtils.replaceFile(
+			"/source",
+			"/target",
+			{ backupPath = "/target.bak" }
+		)
 
 		assertTrue(ok, err)
 		assertEqual(files["/target"], "new")
@@ -1086,7 +1605,11 @@ function tests.file_utils_replace_restores_backup_when_final_move_fails()
 	end)
 
 	withFakeImport("LrFileUtils", fake, function()
-		local ok, err = FileUtils.replaceFile("/source", "/target", { backupPath = "/target.bak" })
+		local ok, err = FileUtils.replaceFile(
+			"/source",
+			"/target",
+			{ backupPath = "/target.bak" }
+		)
 
 		assertNil(ok)
 		assertTrue(tostring(err):match("unknown error") ~= nil)
@@ -1159,7 +1682,10 @@ function tests.state_mark_exported_records_version_and_output_settings()
 	assertEqual(state.photos.a.exportSettingsVersion, 2)
 	assertEqual(state.photos.a.pluginVersionTimestamp, "2026-07-05T07:20:00Z")
 	assertEqual(state.photos.a.outputSettingsChangedAt, "2026-07-05T07:20:00Z")
-	assertEqual(state.photos.a.outputSettingsFingerprint, "exportSettingsVersion=2|longEdgePixels=3200|jpegQuality=85")
+	assertEqual(
+		state.photos.a.outputSettingsFingerprint,
+		"exportSettingsVersion=2|longEdgePixels=3200|jpegQuality=85"
+	)
 	assertEqual(state.photos.a.lastExportTime, "2026-07-05T07:21:00Z")
 end
 
@@ -1233,7 +1759,10 @@ function tests.config_from_properties_repairs_blank_persisted_values()
 	assertEqual(config.exportSettingsVersion, Config.exportSettingsVersion)
 	assertEqual(config.pluginVersionTimestamp, Config.pluginVersionTimestamp)
 	assertEqual(config.outputSettingsChangedAt, Config.outputSettingsChangedAt)
-	assertEqual(config.outputSettingsFingerprint, Config.outputSettingsFingerprint(config))
+	assertEqual(
+		config.outputSettingsFingerprint,
+		Config.outputSettingsFingerprint(config)
+	)
 end
 
 function tests.config_loads_preferences_into_properties()

@@ -1,11 +1,11 @@
-local LrDialogs = import "LrDialogs"
-local LrFunctionContext = import "LrFunctionContext"
-local LrPathUtils = import "LrPathUtils"
-local LrPrefs = import "LrPrefs"
-local LrView = import "LrView"
+local LrDialogs = import("LrDialogs")
+local LrFunctionContext = import("LrFunctionContext")
+local LrPathUtils = import("LrPathUtils")
+local LrPrefs = import("LrPrefs")
+local LrView = import("LrView")
 
-local Config = require "BulkJpegSyncConfig"
-local SyncLauncher = require "BulkJpegSyncSyncLauncher"
+local Config = require("BulkJpegSyncConfig")
+local SyncLauncher = require("BulkJpegSyncSyncLauncher")
 
 local includeUnstarredTitle = "Include unstarred"
 local includeVirtualCopiesTitle = "Include virtual copies"
@@ -84,243 +84,252 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 	return {
 		{
 			title = "Bulk JPEG Sync",
-			viewFactory:column {
+			viewFactory:column({
 				bind_to_object = properties,
 				spacing = viewFactory:control_spacing(),
-				viewFactory:row {
+				viewFactory:row({
 					spacing = viewFactory:control_spacing(),
-					viewFactory:static_text {
+					viewFactory:static_text({
 						title = "Output folder",
-						width = LrView.share "labelWidth",
-					},
-					viewFactory:push_button {
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:push_button({
 						title = "Choose...",
 						action = function()
 							browseForOutputDirectory(properties)
 						end,
-					},
-					viewFactory:push_button {
+					}),
+					viewFactory:push_button({
 						title = "Clear",
 						action = function()
 							clearOutputDirectory(properties)
 						end,
-					},
-				},
-				viewFactory:row {
+					}),
+				}),
+				viewFactory:row({
 					spacing = viewFactory:control_spacing(),
-					viewFactory:static_text {
+					viewFactory:static_text({
 						title = "",
-						width = LrView.share "labelWidth",
-					},
-					viewFactory:static_text {
-						title = bind "outputDirectoryDisplay",
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:static_text({
+						title = bind("outputDirectoryDisplay"),
 						width_in_chars = 34,
-					},
-				},
-				viewFactory:row {
+					}),
+				}),
+				viewFactory:row({
 					spacing = viewFactory:control_spacing(),
-					viewFactory:static_text {
+					viewFactory:static_text({
 						title = "Ratings",
-						width = LrView.share "labelWidth",
-					},
-					viewFactory:push_button {
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:push_button({
 						title = includeUnstarredTitle,
 						action = function()
 							toggleUnstarred(properties)
 						end,
-					},
-					viewFactory:push_button {
+					}),
+					viewFactory:push_button({
 						title = "★",
 						action = function()
 							toggleMinRating(properties, 1)
 						end,
-					},
-					viewFactory:push_button {
+					}),
+					viewFactory:push_button({
 						title = "★★",
 						action = function()
 							toggleMinRating(properties, 2)
 						end,
-					},
-					viewFactory:push_button {
+					}),
+					viewFactory:push_button({
 						title = "★★★",
 						action = function()
 							toggleMinRating(properties, 3)
 						end,
-					},
-					viewFactory:push_button {
+					}),
+					viewFactory:push_button({
 						title = "★★★★",
 						action = function()
 							toggleMinRating(properties, 4)
 						end,
-					},
-					viewFactory:push_button {
+					}),
+					viewFactory:push_button({
 						title = "★★★★★",
 						action = function()
 							toggleMinRating(properties, 5)
 						end,
-					},
-				},
-				viewFactory:row {
+					}),
+				}),
+				viewFactory:row({
 					spacing = viewFactory:control_spacing(),
-					viewFactory:static_text {
+					viewFactory:static_text({
 						title = "",
-						width = LrView.share "labelWidth",
-					},
-					viewFactory:static_text {
-						title = bind "ratingSummary",
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:static_text({
+						title = bind("ratingSummary"),
 						fill_horizontal = 1,
-					},
-				},
-				viewFactory:row {
+					}),
+				}),
+				viewFactory:row({
 					spacing = viewFactory:control_spacing(),
-					viewFactory:static_text {
+					viewFactory:static_text({
 						title = "Virtual copies",
-						width = LrView.share "labelWidth",
-					},
-					viewFactory:checkbox {
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:checkbox({
 						title = includeVirtualCopiesTitle,
-						value = bind "includeVirtualCopies",
-					},
-				},
-			},
+						value = bind("includeVirtualCopies"),
+					}),
+				}),
+			}),
 		},
 		{
 			title = "Output",
-			viewFactory:column {
+			viewFactory:column({
 				bind_to_object = properties,
 				spacing = viewFactory:control_spacing(),
-				viewFactory:row {
+				viewFactory:row({
 					spacing = viewFactory:control_spacing(),
-					viewFactory:static_text {
+					viewFactory:static_text({
 						title = "Long edge pixels",
-						width = LrView.share "labelWidth",
-					},
-					viewFactory:edit_field {
-						value = bind "longEdgePixels",
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:edit_field({
+						value = bind("longEdgePixels"),
 						width_in_digits = 5,
 						immediate = true,
-					},
-				},
-				viewFactory:row {
+					}),
+				}),
+				viewFactory:row({
 					spacing = viewFactory:control_spacing(),
-					viewFactory:static_text {
+					viewFactory:static_text({
 						title = "JPEG quality",
-						width = LrView.share "labelWidth",
-					},
-					viewFactory:edit_field {
-						value = bind "jpegQuality",
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:edit_field({
+						value = bind("jpegQuality"),
 						width_in_digits = 3,
 						immediate = true,
-					},
-				},
-			},
+					}),
+				}),
+			}),
 		},
 		{
 			title = "Last Run",
-			viewFactory:column {
+			viewFactory:column({
 				bind_to_object = properties,
 				spacing = viewFactory:control_spacing(),
-				viewFactory:row {
+				viewFactory:row({
 					spacing = viewFactory:control_spacing(),
-					viewFactory:static_text {
+					viewFactory:static_text({
 						title = "Sync",
-						width = LrView.share "labelWidth",
-					},
-					viewFactory:push_button {
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:push_button({
 						title = "Sync Now",
-						enabled = bind "canSync",
+						enabled = bind("canSync"),
 						action = function()
 							syncNow(properties)
 						end,
-					},
-					viewFactory:static_text {
-						title = bind "syncAvailabilitySummary",
+					}),
+					viewFactory:static_text({
+						title = bind("syncAvailabilitySummary"),
 						fill_horizontal = 1,
-					},
-				},
-				viewFactory:row {
+					}),
+				}),
+				viewFactory:row({
 					spacing = viewFactory:control_spacing(),
-					viewFactory:static_text {
+					viewFactory:static_text({
 						title = "Last run",
-						width = LrView.share "labelWidth",
-					},
-					viewFactory:static_text {
-						title = bind "lastRunAt",
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:static_text({
+						title = bind("lastRunAt"),
 						width_in_chars = 24,
-					},
-				},
-				viewFactory:row {
+					}),
+				}),
+				viewFactory:row({
 					spacing = viewFactory:control_spacing(),
-					viewFactory:static_text {
+					viewFactory:static_text({
 						title = "Results",
-						width = LrView.share "labelWidth",
-					},
-					viewFactory:static_text {
-						title = bind "lastRunResults",
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:static_text({
+						title = bind("lastRunResults"),
 						width_in_chars = 34,
-					},
-				},
-				viewFactory:row {
+					}),
+				}),
+				viewFactory:row({
 					spacing = viewFactory:control_spacing(),
-					viewFactory:static_text {
+					viewFactory:static_text({
 						title = "Cleanup",
-						width = LrView.share "labelWidth",
-					},
-					viewFactory:static_text {
-						title = bind "lastRunCleanup",
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:static_text({
+						title = bind("lastRunCleanup"),
 						width_in_chars = 34,
-					},
-				},
-				viewFactory:row {
+					}),
+				}),
+				viewFactory:row({
 					spacing = viewFactory:control_spacing(),
-					viewFactory:static_text {
+					viewFactory:static_text({
 						title = "Diagnostic",
-						width = LrView.share "labelWidth",
-					},
-					viewFactory:static_text {
-						title = bind "lastRunDiagnostic",
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:static_text({
+						title = bind("lastRunDiagnostic"),
 						width_in_chars = 72,
-					},
-				},
-			},
+					}),
+				}),
+			}),
 		},
 		{
 			title = "Files",
-			viewFactory:column {
+			viewFactory:column({
 				bind_to_object = properties,
 				spacing = viewFactory:control_spacing(),
-				viewFactory:row {
+				viewFactory:row({
 					spacing = viewFactory:control_spacing(),
-					viewFactory:static_text {
+					viewFactory:static_text({
 						title = "State file",
-						width = LrView.share "labelWidth",
-					},
-					viewFactory:static_text {
-						title = LrPathUtils.child(Config.pluginDataDirectory(), Config.stateFileName),
-					},
-				},
-				viewFactory:row {
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:static_text({
+						title = LrPathUtils.child(
+							Config.pluginDataDirectory(),
+							Config.stateFileName
+						),
+					}),
+				}),
+				viewFactory:row({
 					spacing = viewFactory:control_spacing(),
-					viewFactory:static_text {
+					viewFactory:static_text({
 						title = "Log file",
-						width = LrView.share "labelWidth",
-					},
-					viewFactory:static_text {
-						title = bind "logFilePath",
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:static_text({
+						title = bind("logFilePath"),
 						fill_horizontal = 1,
-					},
-				},
-			},
+					}),
+				}),
+			}),
 		},
 	}
 end
 
 return {
 	sectionsForTopOfDialog = function(viewFactory, propertyTable)
-		return LrFunctionContext.callWithContext("BulkJpegSyncSettings", function(context)
-			Config.loadPreferencesIntoProperties(LrPrefs.prefsForPlugin(), propertyTable)
-			observePreferences(context, propertyTable)
-			return sectionsForTopOfDialog(viewFactory, propertyTable)
-		end)
+		return LrFunctionContext.callWithContext(
+			"BulkJpegSyncSettings",
+			function(context)
+				Config.loadPreferencesIntoProperties(
+					LrPrefs.prefsForPlugin(),
+					propertyTable
+				)
+				observePreferences(context, propertyTable)
+				return sectionsForTopOfDialog(viewFactory, propertyTable)
+			end
+		)
 	end,
 }

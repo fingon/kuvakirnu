@@ -97,15 +97,22 @@ end
 function Photo.snapshotFromMetadata(photo, rawMetadata, formattedMetadata)
 	rawMetadata = rawMetadata or {}
 	formattedMetadata = formattedMetadata or {}
-	local identifier = firstPresent(rawMetadata.uuid, rawMetadata.localIdentifier, photo and photo.localIdentifier, tostring(photo))
+	local identifier = firstPresent(
+		rawMetadata.uuid,
+		rawMetadata.localIdentifier,
+		photo and photo.localIdentifier,
+		tostring(photo)
+	)
 	local rawPath = rawMetadata.path
 	local formattedFileName = formattedMetadata.fileName
 	local sourcePath = rawPath or ""
 	local sourcePathFileName = tostring(sourcePath):match("[^/\\]+$")
-	local fileName = firstPresent(formattedFileName, sourcePathFileName, "photo")
+	local fileName =
+		firstPresent(formattedFileName, sourcePathFileName, "photo")
 	local rawRating = firstPresent(rawMetadata.rating)
 	local rating = tonumber(firstPresent(rawRating, 0)) or 0
-	local captureTime, captureDateSource = captureDate(rawMetadata, formattedMetadata)
+	local captureTime, captureDateSource =
+		captureDate(rawMetadata, formattedMetadata)
 
 	return {
 		handle = photo,

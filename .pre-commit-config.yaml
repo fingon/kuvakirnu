@@ -1,4 +1,10 @@
 repos:
+  - repo: https://github.com/JohnnyMorganz/stylua
+    rev: v2.5.2
+    hooks:
+      - id: stylua
+        types: [lua]
+
   - repo: local
     hooks:
       - id: make-lint
