@@ -2,7 +2,9 @@ local Config = {}
 
 Config.stateFileName = "sync-state.lua"
 Config.logFileName = "bulk-jpeg-sync.log"
-Config.exportSettingsVersion = 1
+Config.exportSettingsVersion = 2
+Config.pluginVersionTimestamp = "2026-07-05T07:00:00Z"
+Config.outputSettingsChangedAt = "2026-07-05T07:00:00Z"
 Config.defaultMinRating = 3
 Config.defaultLongEdgePixels = 3200
 Config.defaultJpegQuality = 85
@@ -235,6 +237,14 @@ function Config.syncAvailabilitySummary(properties)
 	return "Select unstarred or a star threshold."
 end
 
+function Config.outputSettingsFingerprint(config)
+	return table.concat({
+		"exportSettingsVersion=" .. tostring(config.exportSettingsVersion or Config.exportSettingsVersion),
+		"longEdgePixels=" .. tostring(config.longEdgePixels),
+		"jpegQuality=" .. tostring(config.jpegQuality),
+	}, "|")
+end
+
 function Config.fromProperties(properties)
 	Config.ensureDefaults(properties)
 
@@ -265,7 +275,10 @@ function Config.fromProperties(properties)
 		longEdgePixels = longEdgePixels,
 		jpegQuality = jpegQuality,
 		exportSettingsVersion = Config.exportSettingsVersion,
+		pluginVersionTimestamp = Config.pluginVersionTimestamp,
+		outputSettingsChangedAt = Config.outputSettingsChangedAt,
 	}
+	config.outputSettingsFingerprint = Config.outputSettingsFingerprint(config)
 	if minRating ~= noStarThreshold then
 		config.minRating = minRating
 	end

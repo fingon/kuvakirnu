@@ -2,6 +2,7 @@ package.path = "lr-plugin/BulkJpegSync.lrdevplugin/?.lua;tests/?.lua;" .. packag
 
 local Catalog = require "BulkJpegSyncCatalog"
 local Config = require "BulkJpegSyncConfig"
+local Exporter = require "BulkJpegSyncExporter"
 local FileUtils = require "BulkJpegSyncFileUtils"
 local Logger = require "BulkJpegSyncLogger"
 local Path = require "BulkJpegSyncPath"
@@ -122,6 +123,26 @@ local function fakeLightroomPhoto(rawMetadata, formattedMetadata)
 			return formattedMetadata and formattedMetadata[key] or nil
 		end,
 	}
+end
+
+local function syncConfig(overrides)
+	local config = {
+		outputDirectory = "/out",
+		minRating = 3,
+		includeUnstarred = false,
+		includeVirtualCopies = false,
+		exportSettingsVersion = 1,
+		pluginVersionTimestamp = "2026-07-05T07:20:00Z",
+		outputSettingsChangedAt = "2026-07-05T07:20:00Z",
+		outputSettingsFingerprint = "exportSettingsVersion=1|longEdgePixels=3200|jpegQuality=85",
+	}
+	if overrides then
+		for key, value in pairs(overrides) do
+			config[key] = value
+		end
+	end
+
+	return config
 end
 
 local function containsValue(values, expected)
@@ -519,7 +540,7 @@ function tests.scanner_marks_existing_below_threshold_as_orphan()
 end
 
 function tests.scanner_skips_when_unchanged_and_file_exists()
-	local config = { outputDirectory = "/out", minRating = 3, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local config = syncConfig()
 	local state = State.empty()
 	local photo = {
 		identifier = "a",
@@ -536,6 +557,10 @@ function tests.scanner_skips_when_unchanged_and_file_exists()
 		status = "exported",
 		fingerprint = "a.raw|5|false|false|||2025-01-01|same",
 		exportSettingsVersion = 1,
+		pluginVersionTimestamp = config.pluginVersionTimestamp,
+		outputSettingsChangedAt = config.outputSettingsChangedAt,
+		outputSettingsFingerprint = "exportSettingsVersion=1|longEdgePixels=3200|jpegQuality=85",
+		lastExportTime = "2026-07-05T07:21:00Z",
 	}
 
 	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
@@ -544,6 +569,192 @@ function tests.scanner_skips_when_unchanged_and_file_exists()
 
 	assertEqual(#planned.exports, 0)
 	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 1, orphaned = 0, ignored = 0 })
+end
+
+function tests.scanner_skips_when_matching_epochs_are_newer_than_last_export_time()
+	local config = syncConfig()
+	local state = State.empty()
+	local photo = {
+		identifier = "a",
+		sourcePath = "a.raw",
+		fileName = "a.raw",
+		rating = 5,
+		isRejected = false,
+		isVirtualCopy = false,
+		captureTime = "2025-01-01",
+		lastEditTime = "same",
+	}
+	state.photos.a = {
+		outputPath = "/out/a.jpg",
+		status = "exported",
+		fingerprint = Photo.fingerprint(photo),
+		exportSettingsVersion = 1,
+		pluginVersionTimestamp = config.pluginVersionTimestamp,
+		outputSettingsChangedAt = config.outputSettingsChangedAt,
+		outputSettingsFingerprint = config.outputSettingsFingerprint,
+		lastExportTime = "2026-07-05T07:19:59Z",
+	}
+
+	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
+		return true
+	end)
+
+	assertEqual(#planned.exports, 0)
+	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 1, orphaned = 0, ignored = 0 })
+end
+
+function tests.scanner_exports_legacy_record_older_than_plugin_version()
+	local config = syncConfig()
+	local state = State.empty()
+	local photo = {
+		identifier = "a",
+		sourcePath = "a.raw",
+		fileName = "a.raw",
+		rating = 5,
+		isRejected = false,
+		isVirtualCopy = false,
+		captureTime = "2025-01-01",
+		lastEditTime = "same",
+	}
+	state.photos.a = {
+		outputPath = "/out/a.jpg",
+		status = "exported",
+		fingerprint = Photo.fingerprint(photo),
+		exportSettingsVersion = 1,
+		outputSettingsFingerprint = config.outputSettingsFingerprint,
+		lastExportTime = "2026-07-05T07:19:59Z",
+	}
+
+	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
+		return true
+	end)
+
+	assertEqual(#planned.exports, 1)
+	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 })
+end
+
+function tests.scanner_exports_legacy_record_older_than_output_settings()
+	local config = syncConfig({ pluginVersionTimestamp = "2026-07-05T07:00:00Z" })
+	local state = State.empty()
+	local photo = {
+		identifier = "a",
+		sourcePath = "a.raw",
+		fileName = "a.raw",
+		rating = 5,
+		isRejected = false,
+		isVirtualCopy = false,
+		captureTime = "2025-01-01",
+		lastEditTime = "same",
+	}
+	state.photos.a = {
+		outputPath = "/out/a.jpg",
+		status = "exported",
+		fingerprint = Photo.fingerprint(photo),
+		exportSettingsVersion = 1,
+		outputSettingsFingerprint = config.outputSettingsFingerprint,
+		lastExportTime = "2026-07-05T07:19:59Z",
+	}
+
+	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
+		return true
+	end)
+
+	assertEqual(#planned.exports, 1)
+	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 })
+end
+
+function tests.scanner_exports_when_plugin_epoch_differs()
+	local config = syncConfig()
+	local state = State.empty()
+	local photo = {
+		identifier = "a",
+		sourcePath = "a.raw",
+		fileName = "a.raw",
+		rating = 5,
+		isRejected = false,
+		isVirtualCopy = false,
+		captureTime = "2025-01-01",
+		lastEditTime = "same",
+	}
+	state.photos.a = {
+		outputPath = "/out/a.jpg",
+		status = "exported",
+		fingerprint = Photo.fingerprint(photo),
+		exportSettingsVersion = 1,
+		pluginVersionTimestamp = "2026-07-05T06:00:00Z",
+		outputSettingsChangedAt = config.outputSettingsChangedAt,
+		outputSettingsFingerprint = config.outputSettingsFingerprint,
+		lastExportTime = "2026-07-05T07:21:00Z",
+	}
+
+	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
+		return true
+	end)
+
+	assertEqual(#planned.exports, 1)
+	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 })
+end
+
+function tests.scanner_exports_when_output_settings_epoch_differs()
+	local config = syncConfig()
+	local state = State.empty()
+	local photo = {
+		identifier = "a",
+		sourcePath = "a.raw",
+		fileName = "a.raw",
+		rating = 5,
+		isRejected = false,
+		isVirtualCopy = false,
+		captureTime = "2025-01-01",
+		lastEditTime = "same",
+	}
+	state.photos.a = {
+		outputPath = "/out/a.jpg",
+		status = "exported",
+		fingerprint = Photo.fingerprint(photo),
+		exportSettingsVersion = 1,
+		pluginVersionTimestamp = config.pluginVersionTimestamp,
+		outputSettingsChangedAt = "2026-07-05T06:00:00Z",
+		outputSettingsFingerprint = config.outputSettingsFingerprint,
+		lastExportTime = "2026-07-05T07:21:00Z",
+	}
+
+	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
+		return true
+	end)
+
+	assertEqual(#planned.exports, 1)
+	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 })
+end
+
+function tests.scanner_exports_when_output_settings_fingerprint_differs()
+	local config = syncConfig()
+	local state = State.empty()
+	local photo = {
+		identifier = "a",
+		sourcePath = "a.raw",
+		fileName = "a.raw",
+		rating = 5,
+		isRejected = false,
+		isVirtualCopy = false,
+		captureTime = "2025-01-01",
+		lastEditTime = "same",
+	}
+	state.photos.a = {
+		outputPath = "/out/a.jpg",
+		status = "exported",
+		fingerprint = Photo.fingerprint(photo),
+		exportSettingsVersion = 1,
+		outputSettingsFingerprint = "exportSettingsVersion=1|longEdgePixels=1600|jpegQuality=85",
+		lastExportTime = "2026-07-05T07:21:00Z",
+	}
+
+	local planned = Scanner.plan({ photo }, state, config, Path.derivativePath, function()
+		return true
+	end)
+
+	assertEqual(#planned.exports, 1)
+	assertPlanStats(planned.stats, { candidates = 1, selected = 1, skipped = 0, orphaned = 0, ignored = 0 })
 end
 
 function tests.scanner_marks_exported_records_absent_from_candidates_as_orphans()
@@ -676,6 +887,20 @@ function tests.config_defaults_repair_blank_persisted_values()
 	assertEqual(properties.includeVirtualCopies, false)
 end
 
+function tests.config_export_settings_version_tracks_export_behavior()
+	assertEqual(Config.exportSettingsVersion, 2)
+end
+
+function tests.config_output_settings_fingerprint_tracks_rendering_settings()
+	local fingerprint = Config.outputSettingsFingerprint({
+		exportSettingsVersion = 2,
+		longEdgePixels = 3200,
+		jpegQuality = 85,
+	})
+
+	assertEqual(fingerprint, "exportSettingsVersion=2|longEdgePixels=3200|jpegQuality=85")
+end
+
 function tests.config_toggle_same_rating_clears_threshold()
 	assertEqual(Config.toggleMinRating(4, 4), 0)
 	assertEqual(Config.toggleMinRating(3, 4), 4)
@@ -742,6 +967,25 @@ function tests.config_updates_last_run_properties()
 		"2026-07-05T10:11:12Z candidates=5 selected=4 exported=1 skipped=3 orphaned=2 deleted=2 failed=3 ignored=1 metadata_missing=6 metadata_mismatched=7 capture_date_missing=8"
 	)
 	assertEqual(properties.canSync, true)
+end
+
+function tests.export_settings_prevent_upscaling_and_include_metadata()
+	local settings = Exporter.exportSettings({
+		longEdgePixels = 3200,
+		jpegQuality = 85,
+	}, "/tmp/export")
+
+	assertEqual(settings.LR_export_destinationPathPrefix, "/tmp/export")
+	assertEqual(settings.LR_format, "JPEG")
+	assertEqual(settings.LR_jpeg_quality, 0.85)
+	assertEqual(settings.LR_size_doConstrain, true)
+	assertEqual(settings.LR_size_doNotEnlarge, true)
+	assertEqual(settings.LR_size_maxHeight, 3200)
+	assertEqual(settings.LR_size_maxWidth, 3200)
+	assertEqual(settings.LR_embeddedMetadataOption, "all")
+	assertEqual(settings.LR_minimizeEmbeddedMetadata, false)
+	assertEqual(settings.LR_metadata_keywordOptions, "lightroomHierarchical")
+	assertEqual(settings.LR_removeLocationMetadata, false)
 end
 
 function tests.logger_writes_plugin_owned_log_file()
@@ -896,6 +1140,29 @@ function tests.state_save_can_replace_existing_state_file()
 	os.remove(path .. ".tmp")
 end
 
+function tests.state_mark_exported_records_version_and_output_settings()
+	local state = State.empty()
+	local item = {
+		photo = {
+			identifier = "a",
+			sourcePath = "a.raw",
+		},
+		fingerprint = "fingerprint",
+		configExportSettingsVersion = 2,
+		configPluginVersionTimestamp = "2026-07-05T07:20:00Z",
+		configOutputSettingsChangedAt = "2026-07-05T07:20:00Z",
+		configOutputSettingsFingerprint = "exportSettingsVersion=2|longEdgePixels=3200|jpegQuality=85",
+	}
+
+	State.markExported(state, item, "/out/a.jpg", "2026-07-05T07:21:00Z")
+
+	assertEqual(state.photos.a.exportSettingsVersion, 2)
+	assertEqual(state.photos.a.pluginVersionTimestamp, "2026-07-05T07:20:00Z")
+	assertEqual(state.photos.a.outputSettingsChangedAt, "2026-07-05T07:20:00Z")
+	assertEqual(state.photos.a.outputSettingsFingerprint, "exportSettingsVersion=2|longEdgePixels=3200|jpegQuality=85")
+	assertEqual(state.photos.a.lastExportTime, "2026-07-05T07:21:00Z")
+end
+
 function tests.state_save_requires_existing_or_lightroom_directory_creation()
 	local state = State.empty()
 	local path = "missing-test-dir/state.lua"
@@ -963,6 +1230,10 @@ function tests.config_from_properties_repairs_blank_persisted_values()
 	assertEqual(config.jpegQuality, 85)
 	assertEqual(config.includeUnstarred, false)
 	assertEqual(config.includeVirtualCopies, false)
+	assertEqual(config.exportSettingsVersion, Config.exportSettingsVersion)
+	assertEqual(config.pluginVersionTimestamp, Config.pluginVersionTimestamp)
+	assertEqual(config.outputSettingsChangedAt, Config.outputSettingsChangedAt)
+	assertEqual(config.outputSettingsFingerprint, Config.outputSettingsFingerprint(config))
 end
 
 function tests.config_loads_preferences_into_properties()

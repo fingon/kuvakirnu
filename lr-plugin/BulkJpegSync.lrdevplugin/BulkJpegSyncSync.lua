@@ -260,6 +260,9 @@ function Sync.run(activeProperties)
 			phaseProgress(cleanupProgressEnd, exportProgressEnd, index - 1, #plan.exports)
 		)
 		item.configExportSettingsVersion = config.exportSettingsVersion
+		item.configPluginVersionTimestamp = config.pluginVersionTimestamp
+		item.configOutputSettingsChangedAt = config.outputSettingsChangedAt
+		item.configOutputSettingsFingerprint = config.outputSettingsFingerprint
 		local exportOk, exportErr = Exporter.exportItems({ item }, config, nil)
 		if exportOk then
 			State.markExported(state, item, item.outputPath, now())

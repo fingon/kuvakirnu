@@ -38,6 +38,7 @@ Canceling the progress dialog stops before later phases when possible.
 - Queries Lightroom for matching rating candidates instead of scanning the full
   catalog.
 - Writes derivatives under `YYYY/YYYY-MM-DD/`.
+- Treats JPEG long edge as a maximum and does not enlarge smaller originals.
 - Uses stable filenames shaped like `IMG_1234__lr-<lightroom-id>.jpg`.
 - Uses filenames shaped like
   `IMG_1234__copy-BlackWhite__lr-<lightroom-id>.jpg` for virtual copies when
@@ -45,6 +46,8 @@ Canceling the progress dialog stops before later phases when possible.
 - Reuses the recorded output path for already-seen photos so downstream asset
   paths remain stable.
 - Stores sync state in a plugin-owned Lua manifest file.
+- Exports Lightroom metadata into JPEGs, including hierarchical keywords and
+  location metadata when Lightroom provides them.
 - Deletes derivative files and marks state records orphaned when photos stop
   matching the configured rules.
 - Shows compact last-run status in the Plug-in Manager and stores a full
@@ -85,6 +88,15 @@ Lightroom Classic.
 See [LIGHTROOM_GOTCHAS.md](LIGHTROOM_GOTCHAS.md) for Lightroom Classic SDK
 runtime notes, including toolkit script loading, settings persistence, yielding,
 and filesystem limitations.
+
+To inspect metadata in an exported JPEG, run:
+
+```sh
+exiftool -Rating -Subject -HierarchicalSubject -GPSLatitude -GPSLongitude exported.jpg
+```
+
+For lower-resolution originals, confirm the exported image dimensions do not
+exceed the source dimensions; the configured long edge is an upper bound.
 
 ## Known MVP limits
 
