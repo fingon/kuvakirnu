@@ -7,34 +7,9 @@ building this plugin.
 
 ## Before trusting the plugin with a real catalog
 
-- Validate the plugin in Lightroom Classic on macOS.
-- Confirm `Info.lua` metadata and menu registration load without SDK warnings.
-- Confirm the root-level toolkit script layout fixes `Could not load toolkit
-  script` errors after a full Lightroom restart.
-- Confirm the Plug-in Manager settings panel persists values correctly.
-- Confirm changed settings survive closing and reopening the Plug-in Manager and
-  restarting Lightroom Classic.
-- Confirm `Sync Now` is enabled and disabled based on output folder and rating
-  selection state.
-- Confirm sync command appears under both Library and File Plug-in Extras after
-  plugin reload or Lightroom restart.
 - Confirm sync progress captions appear quickly on large catalogs and canceling
   the progress dialog stops cleanly before export/state save phases.
-- Confirm the output folder setting is picker-only and cannot be edited as
-  arbitrary text.
-- Confirm fixed-title star rating controls select and clear thresholds and
-  update the rating summary correctly.
-- Confirm the unstarred button and virtual-copy checkbox persist correctly.
-- Confirm `catalog:findPhotos()` rating searches and the metadata keys used in
-  `Photo.snapshot` return the expected identifiers, capture timestamps, ratings,
-  rejected state, and virtual-copy state.
 - Confirm virtual-copy exports get unique filenames for named and unnamed copies.
-- Confirm Lightroom export settings produce JPEGs with intended dimensions,
-  quality, color space, and embedded metadata.
-- Confirm exported rendition paths returned by Lightroom are moved into the
-  stable derivative path correctly.
-- Confirm re-running a sync skips unchanged files and replaces changed
-  derivatives in place.
 - Confirm downgraded, rejected, or otherwise no-longer-matching photos have
   derivative files deleted from the output folder.
 - Confirm failures for offline originals, missing output directories, and export
