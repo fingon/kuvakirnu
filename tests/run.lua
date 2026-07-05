@@ -26,6 +26,13 @@ local function assertNil(value, message)
 	end
 end
 
+local function assertPlanStats(actual, expected)
+	assertEqual(actual.scanned, expected.scanned, "scanned count differs")
+	assertEqual(actual.selected, expected.selected, "selected count differs")
+	assertEqual(actual.skipped, expected.skipped, "skipped count differs")
+	assertEqual(actual.ignored, expected.ignored, "ignored count differs")
+end
+
 local function fakeLightroomPhoto(rawMetadata, formattedMetadata)
 	return {
 		localIdentifier = rawMetadata and rawMetadata.localIdentifier,
@@ -119,6 +126,7 @@ function tests.scanner_filters_rating_rejected_and_virtual_copy()
 
 	assertEqual(#planned.exports, 1)
 	assertEqual(planned.exports[1].photo.identifier, "a")
+	assertPlanStats(planned.stats, { scanned = 4, selected = 1, skipped = 0, ignored = 3 })
 end
 
 function tests.scanner_includes_unstarred_when_enabled()
@@ -133,6 +141,7 @@ function tests.scanner_includes_unstarred_when_enabled()
 
 	assertEqual(#planned.exports, 1)
 	assertEqual(planned.exports[1].photo.identifier, "a")
+	assertPlanStats(planned.stats, { scanned = 2, selected = 1, skipped = 0, ignored = 1 })
 end
 
 function tests.scanner_includes_only_unstarred_without_star_threshold()
@@ -147,6 +156,7 @@ function tests.scanner_includes_only_unstarred_without_star_threshold()
 
 	assertEqual(#planned.exports, 1)
 	assertEqual(planned.exports[1].photo.identifier, "a")
+	assertPlanStats(planned.stats, { scanned = 2, selected = 1, skipped = 0, ignored = 1 })
 end
 
 function tests.scanner_includes_nothing_without_any_rating_selection()
@@ -160,6 +170,7 @@ function tests.scanner_includes_nothing_without_any_rating_selection()
 	end)
 
 	assertEqual(#planned.exports, 0)
+	assertPlanStats(planned.stats, { scanned = 2, selected = 0, skipped = 0, ignored = 2 })
 end
 
 function tests.scanner_includes_virtual_copies_when_enabled()
@@ -173,6 +184,7 @@ function tests.scanner_includes_virtual_copies_when_enabled()
 
 	assertEqual(#planned.exports, 1)
 	assertEqual(planned.exports[1].photo.identifier, "a")
+	assertPlanStats(planned.stats, { scanned = 1, selected = 1, skipped = 0, ignored = 0 })
 end
 
 function tests.scanner_plan_can_be_canceled()
@@ -254,6 +266,7 @@ function tests.scanner_marks_existing_below_threshold_as_orphan()
 
 	assertEqual(#planned.orphans, 1)
 	assertEqual(planned.orphans[1].photo.identifier, "a")
+	assertPlanStats(planned.stats, { scanned = 1, selected = 0, skipped = 0, ignored = 0 })
 end
 
 function tests.scanner_skips_when_unchanged_and_file_exists()
@@ -281,6 +294,65 @@ function tests.scanner_skips_when_unchanged_and_file_exists()
 	end)
 
 	assertEqual(#planned.exports, 0)
+	assertPlanStats(planned.stats, { scanned = 1, selected = 1, skipped = 1, ignored = 0 })
+end
+
+function tests.scanner_stats_separate_selected_skips_from_ignored_catalog_photos()
+	local config = { outputDirectory = "/out", minRating = 5, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local state = State.empty()
+	local photos = {}
+
+	for index = 1, 5 do
+		local identifier = "selected-" .. tostring(index)
+		local photo = {
+			identifier = identifier,
+			sourcePath = identifier .. ".raw",
+			fileName = identifier .. ".raw",
+			rating = 5,
+			isRejected = false,
+			isVirtualCopy = false,
+			captureTime = "2025-01-01",
+			lastEditTime = "same",
+		}
+		photos[#photos + 1] = photo
+		state.photos[identifier] = {
+			outputPath = "/out/" .. identifier .. ".jpg",
+			status = "exported",
+			fingerprint = Photo.fingerprint(photo),
+			exportSettingsVersion = 1,
+		}
+	end
+
+	for index = 1, 95 do
+		photos[#photos + 1] = {
+			identifier = "ignored-" .. tostring(index),
+			fileName = "ignored.raw",
+			rating = 4,
+			isRejected = false,
+			isVirtualCopy = false,
+		}
+	end
+
+	local planned = Scanner.plan(photos, state, config, Path.derivativePath, function()
+		return true
+	end)
+
+	assertEqual(#planned.exports, 0)
+	assertEqual(#planned.orphans, 0)
+	assertPlanStats(planned.stats, { scanned = 100, selected = 5, skipped = 5, ignored = 95 })
+end
+
+function tests.scanner_stats_count_selected_exports_without_skipping()
+	local config = { outputDirectory = "/out", minRating = 5, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local state = State.empty()
+	local planned = Scanner.plan({
+		{ identifier = "a", sourcePath = "a.raw", fileName = "a.raw", rating = 5, isRejected = false, isVirtualCopy = false },
+	}, state, config, Path.derivativePath, function()
+		return false
+	end)
+
+	assertEqual(#planned.exports, 1)
+	assertPlanStats(planned.stats, { scanned = 1, selected = 1, skipped = 0, ignored = 0 })
 end
 
 function tests.config_defaults_are_visible()

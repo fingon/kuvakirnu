@@ -1,6 +1,7 @@
 local Photo = require "ImmichDerivativeSyncPhoto"
 
 local Scanner = {}
+local exportedStatus = "exported"
 
 local function maybeImport(name)
 	if type(import) ~= "function" then
@@ -50,6 +51,12 @@ function Scanner.plan(photos, state, config, pathGenerator, fileExists, progress
 	local orphans = {}
 	local seen = {}
 	local totalPhotos = #photos
+	local stats = {
+		scanned = totalPhotos,
+		selected = 0,
+		skipped = 0,
+		ignored = 0,
+	}
 
 	for index, handle in ipairs(photos) do
 		if canceled(progressScope) then
@@ -66,10 +73,11 @@ function Scanner.plan(photos, state, config, pathGenerator, fileExists, progress
 		seen[photo.identifier] = true
 
 		if Scanner.matches(photo, config) then
+			stats.selected = stats.selected + 1
 			local outputPath = record and record.outputPath or pathGenerator(config.outputDirectory, photo)
 			local fingerprint = Photo.fingerprint(photo)
 			local needsExport = record == nil
-				or record.status ~= "exported"
+				or record.status ~= exportedStatus
 				or record.fingerprint ~= fingerprint
 				or record.exportSettingsVersion ~= config.exportSettingsVersion
 				or not fileExists(outputPath)
@@ -80,12 +88,16 @@ function Scanner.plan(photos, state, config, pathGenerator, fileExists, progress
 					outputPath = outputPath,
 					fingerprint = fingerprint,
 				}
+			else
+				stats.skipped = stats.skipped + 1
 			end
-		elseif record and record.status == "exported" then
+		elseif record and record.status == exportedStatus then
 			orphans[#orphans + 1] = {
 				photo = photo,
 				record = record,
 			}
+		else
+			stats.ignored = stats.ignored + 1
 		end
 	end
 
@@ -98,6 +110,7 @@ function Scanner.plan(photos, state, config, pathGenerator, fileExists, progress
 		exports = exports,
 		orphans = orphans,
 		seen = seen,
+		stats = stats,
 	}
 end
 

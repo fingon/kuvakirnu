@@ -36,14 +36,17 @@ local function finish(progressScope)
 	running = false
 end
 
-local function updateLastRun(properties, exportedCount, skippedCount, orphanCount, failedCount)
+local function updateLastRun(properties, stats, exportedCount, orphanCount, failedCount)
 	properties.lastRunSummary = string.format(
-		"%s exported=%d skipped=%d orphaned=%d failed=%d",
+		"%s scanned=%d selected=%d exported=%d skipped=%d orphaned=%d failed=%d ignored=%d",
 		now(),
+		stats.scanned,
+		stats.selected,
 		exportedCount,
-		skippedCount,
+		stats.skipped,
 		orphanCount,
-		failedCount
+		failedCount,
+		stats.ignored
 	)
 end
 
@@ -134,8 +137,7 @@ function Sync.run()
 		return nil, saveErr
 	end
 
-	local skippedCount = #photos - #plan.exports - #plan.orphans
-	updateLastRun(properties, exportedCount, skippedCount, #plan.orphans, failedCount)
+	updateLastRun(properties, plan.stats, exportedCount, #plan.orphans, failedCount)
 	if failedCount > 0 then
 		LrDialogs.message(
 			"Immich Derivative Sync completed with failures",
