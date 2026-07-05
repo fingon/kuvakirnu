@@ -1,10 +1,19 @@
-# kuvakameli
+# kuvakirnu
 
-Bulk JPEG export sync tooling for Lightroom Classic.
+![Logo](doc/kuvakirnu-logo.svg)
 
-The current implementation is a Lightroom Classic SDK plugin that exports
-selected JPEG derivatives from Lightroom Classic into a stable folder tree. RAW
-files and other archival originals stay in Lightroom Classic storage.
+This is my very, very vibe coded solution to handling all my problems
+with pictures.
+
+I am reserving right to add more stuff here as time goes by, and my
+solutions evolve. The first stage is is a Lightroom Classic SDK plugin
+that exports selected JPEG derivatives from Lightroom Classic into a
+stable folder tree. RAW files and other archival originals stay in
+Lightroom Classic storage.
+
+A later follow-up will handle syncing of some set of edits from Immich
+to Lightroom (probably just stars, perhaps keywords), but it is not
+implemented yet.
 
 ## Repository layout
 
