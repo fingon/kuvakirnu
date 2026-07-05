@@ -15,6 +15,12 @@ building this plugin.
 - Confirm failures for offline originals, missing output directories, and export
   errors are visible to the user and recorded in state.
 
+## Known issues
+
+- LrExportSession has no API to suppress its progress dialog. Exports grouped by
+  date cause the dialog to flash between date groups. Tracked in
+  `LIGHTROOM_GOTCHAS.md`.
+
 ## MVP hardening
 
 - Make state writes safe if Lightroom exits during a long run.

@@ -106,3 +106,17 @@ Notes from building and testing this plugin against Lightroom Classic.
   `select("#", ...)` when implementing nil-tolerant fallback helpers.
 - Treat missing source paths and filenames as expected input. Derive a filename
   from path when possible, otherwise use a stable fallback such as `photo`.
+
+## Export session progress dialog
+
+- `LrExportSession` has no API to suppress its built-in progress dialog. The
+  constructor only accepts `photosToExport` and `exportSettings`; the
+  `renditions()` iterator accepts `progressScope` and `stopIfCanceled` but
+  nothing to silence the UI.
+- Each `LrExportSession` opens its own Lightroom export dialog. Batching
+  exports by capture date (one session per date) causes the dialog to appear
+  and disappear between date groups, which is visible as a popup flash.
+- The only way to avoid the flash entirely would be to use a single
+  `LrExportSession` for all photos, but that would make any single rendition
+  failure abort the entire run. Adobe no longer engages on SDK issues, so a
+  suppression API is unlikely to appear.
