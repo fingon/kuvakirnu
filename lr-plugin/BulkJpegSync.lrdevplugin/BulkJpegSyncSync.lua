@@ -135,7 +135,7 @@ local function updateLastRun(
 		selected = stats.selected,
 		exported = exportedCount,
 		skipped = stats.skipped,
-		orphaned = stats.orphaned,
+		cleaned = stats.orphaned,
 		deleted = deletedCount,
 		failed = failedCount,
 		ignored = stats.ignored,
@@ -323,11 +323,12 @@ function Sync.run(activeProperties)
 			end
 		end
 		if not deleteFailed then
-			State.markOrphaned(state, orphan, now())
+			local identifier = orphan.identifier or orphan.photo.identifier
+			State.deleteRecord(state, identifier)
 		end
 	end
 	Logger.info("cleanup_completed", {
-		orphaned = plan.stats.orphaned,
+		cleaned = plan.stats.orphaned,
 		deleted = deletedCount,
 		failed = failedCount,
 	})

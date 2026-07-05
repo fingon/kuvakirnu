@@ -203,10 +203,8 @@ function State.markFailed(state, item, errorMessage)
 	state.photos[item.photo.identifier] = existing
 end
 
-function State.markOrphaned(state, item, orphanedAt)
-	item.record.status = "orphaned"
-	item.record.orphanedAt = orphanedAt
-	state.photos[item.identifier or item.photo.identifier] = item.record
+function State.deleteRecord(state, identifier)
+	state.photos[identifier] = nil
 end
 
 return State

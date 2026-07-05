@@ -159,7 +159,7 @@ end
 
 function Config.lastRunCleanup(stats, deletedCount, failedCount)
 	return string.format(
-		"orphaned %d, deleted %d, failed %d",
+		"cleaned %d, deleted %d, failed %d",
 		stats.orphaned,
 		deletedCount,
 		failedCount
@@ -174,7 +174,7 @@ function Config.lastRunDiagnostic(
 	failedCount
 )
 	return string.format(
-		"%s candidates=%d selected=%d exported=%d skipped=%d orphaned=%d deleted=%d failed=%d ignored=%d videos_skipped=%d metadata_missing=%d metadata_mismatched=%d capture_date_missing=%d",
+		"%s candidates=%d selected=%d exported=%d skipped=%d cleaned=%d deleted=%d failed=%d ignored=%d videos_skipped=%d metadata_missing=%d metadata_mismatched=%d capture_date_missing=%d",
 		timestamp,
 		stats.candidates,
 		stats.selected,

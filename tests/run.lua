@@ -1441,11 +1441,11 @@ function tests.config_formats_last_run_fields()
 	)
 	assertEqual(
 		Config.lastRunCleanup(stats, 2, 1),
-		"orphaned 2, deleted 2, failed 1"
+		"cleaned 2, deleted 2, failed 1"
 	)
 	assertEqual(
 		Config.lastRunDiagnostic("2026-07-05T10:11:12Z", stats, 1, 2, 1),
-		"2026-07-05T10:11:12Z candidates=5 selected=5 exported=1 skipped=4 orphaned=2 deleted=2 failed=1 ignored=1 videos_skipped=0 metadata_missing=0 metadata_mismatched=0 capture_date_missing=0"
+		"2026-07-05T10:11:12Z candidates=5 selected=5 exported=1 skipped=4 cleaned=2 deleted=2 failed=1 ignored=1 videos_skipped=0 metadata_missing=0 metadata_mismatched=0 capture_date_missing=0"
 	)
 end
 
@@ -1477,10 +1477,10 @@ function tests.config_updates_last_run_properties()
 		properties.lastRunResults,
 		"candidates 5, selected 4, exported 1, skipped 3"
 	)
-	assertEqual(properties.lastRunCleanup, "orphaned 2, deleted 2, failed 3")
+	assertEqual(properties.lastRunCleanup, "cleaned 2, deleted 2, failed 3")
 	assertEqual(
 		properties.lastRunDiagnostic,
-		"2026-07-05T10:11:12Z candidates=5 selected=4 exported=1 skipped=3 orphaned=2 deleted=2 failed=3 ignored=1 videos_skipped=0 metadata_missing=6 metadata_mismatched=7 capture_date_missing=8"
+		"2026-07-05T10:11:12Z candidates=5 selected=4 exported=1 skipped=3 cleaned=2 deleted=2 failed=3 ignored=1 videos_skipped=0 metadata_missing=6 metadata_mismatched=7 capture_date_missing=8"
 	)
 	assertEqual(properties.canSync, true)
 end
@@ -1650,13 +1650,15 @@ function tests.state_save_can_replace_existing_state_file()
 	local ok, saveErr = State.save(path, state)
 	assertTrue(ok, saveErr)
 
-	state.photos.a.status = "orphaned"
+	state.photos.a.status = "failed"
+	state.photos.a.lastError = "test error"
 	local secondOk, secondSaveErr = State.save(path, state)
 	assertTrue(secondOk, secondSaveErr)
 
 	local loaded, loadErr = State.load(path)
 	assertTrue(loaded, loadErr)
-	assertEqual(loaded.photos.a.status, "orphaned")
+	assertEqual(loaded.photos.a.status, "failed")
+	assertEqual(loaded.photos.a.lastError, "test error")
 
 	os.remove(path)
 	os.remove(path .. ".bak")
