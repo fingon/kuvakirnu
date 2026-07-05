@@ -1,6 +1,7 @@
 package.path = "lr-plugin/ImmichDerivativeSync.lrdevplugin/?.lua;tests/?.lua;" .. package.path
 
 local Config = require "ImmichDerivativeSyncConfig"
+local FileUtils = require "ImmichDerivativeSyncFileUtils"
 local Path = require "ImmichDerivativeSyncPath"
 local Photo = require "ImmichDerivativeSyncPhoto"
 local Scanner = require "ImmichDerivativeSyncScanner"
@@ -31,6 +32,54 @@ local function assertPlanStats(actual, expected)
 	assertEqual(actual.selected, expected.selected, "selected count differs")
 	assertEqual(actual.skipped, expected.skipped, "skipped count differs")
 	assertEqual(actual.ignored, expected.ignored, "ignored count differs")
+end
+
+local function withFakeImport(moduleName, module, fn)
+	local previousImport = _G.import
+	_G.import = function(name)
+		if name == moduleName then
+			return module
+		end
+		error("unexpected import: " .. tostring(name))
+	end
+
+	local results = { pcall(fn) }
+	_G.import = previousImport
+	if not results[1] then
+		error(results[2], 2)
+	end
+
+	return results[2], results[3]
+end
+
+local function fakeFileUtils(files, failMove)
+	return {
+		exists = function(path)
+			if files[path] ~= nil then
+				return "file"
+			end
+			return false
+		end,
+		delete = function(path)
+			files[path] = nil
+			return true
+		end,
+		move = function(sourcePath, targetPath)
+			if failMove and failMove(sourcePath, targetPath) then
+				return false, nil
+			end
+			if files[sourcePath] == nil then
+				return false, "missing source"
+			end
+			if files[targetPath] ~= nil then
+				return false, "target exists"
+			end
+
+			files[targetPath] = files[sourcePath]
+			files[sourcePath] = nil
+			return true
+		end,
+	}
 end
 
 local function fakeLightroomPhoto(rawMetadata, formattedMetadata)
@@ -424,6 +473,72 @@ function tests.config_can_sync_rejects_empty_rating_selection()
 	assertEqual(Config.syncAvailabilitySummary(properties), "Select unstarred or a star threshold.")
 end
 
+function tests.file_utils_move_reports_missing_lightroom_error()
+	local files = { ["/source"] = "new" }
+	local fake = fakeFileUtils(files, function()
+		return true
+	end)
+
+	withFakeImport("LrFileUtils", fake, function()
+		local ok, err = FileUtils.moveFile("/source", "/target")
+
+		assertNil(ok)
+		assertTrue(tostring(err):match("source=/source") ~= nil)
+		assertTrue(tostring(err):match("target=/target") ~= nil)
+		assertTrue(tostring(err):match("unknown error") ~= nil)
+	end)
+end
+
+function tests.file_utils_replace_moves_new_file_without_existing_target()
+	local files = { ["/source"] = "new" }
+	local fake = fakeFileUtils(files)
+
+	withFakeImport("LrFileUtils", fake, function()
+		local ok, err = FileUtils.replaceFile("/source", "/target")
+
+		assertTrue(ok, err)
+		assertEqual(files["/target"], "new")
+		assertNil(files["/source"])
+	end)
+end
+
+function tests.file_utils_replace_backs_up_existing_target()
+	local files = {
+		["/source"] = "new",
+		["/target"] = "old",
+		["/target.bak"] = "stale",
+	}
+	local fake = fakeFileUtils(files)
+
+	withFakeImport("LrFileUtils", fake, function()
+		local ok, err = FileUtils.replaceFile("/source", "/target", { backupPath = "/target.bak" })
+
+		assertTrue(ok, err)
+		assertEqual(files["/target"], "new")
+		assertEqual(files["/target.bak"], "old")
+		assertNil(files["/source"])
+	end)
+end
+
+function tests.file_utils_replace_restores_backup_when_final_move_fails()
+	local files = {
+		["/source"] = "new",
+		["/target"] = "old",
+	}
+	local fake = fakeFileUtils(files, function(sourcePath, targetPath)
+		return sourcePath == "/source" and targetPath == "/target"
+	end)
+
+	withFakeImport("LrFileUtils", fake, function()
+		local ok, err = FileUtils.replaceFile("/source", "/target", { backupPath = "/target.bak" })
+
+		assertNil(ok)
+		assertTrue(tostring(err):match("unknown error") ~= nil)
+		assertEqual(files["/target"], "old")
+		assertNil(files["/target.bak"])
+	end)
+end
+
 function tests.state_round_trips()
 	local path = os.tmpname()
 	local state = State.empty()
@@ -441,6 +556,32 @@ function tests.state_round_trips()
 	assertEqual(loaded.photos.a.status, "exported")
 
 	os.remove(path)
+	os.remove(path .. ".bak")
+	os.remove(path .. ".tmp")
+end
+
+function tests.state_save_can_replace_existing_state_file()
+	local path = os.tmpname()
+	local state = State.empty()
+	state.photos.a = {
+		outputPath = "/out/a.jpg",
+		status = "exported",
+	}
+
+	local ok, saveErr = State.save(path, state)
+	assertTrue(ok, saveErr)
+
+	state.photos.a.status = "orphaned"
+	local secondOk, secondSaveErr = State.save(path, state)
+	assertTrue(secondOk, secondSaveErr)
+
+	local loaded, loadErr = State.load(path)
+	assertTrue(loaded, loadErr)
+	assertEqual(loaded.photos.a.status, "orphaned")
+
+	os.remove(path)
+	os.remove(path .. ".bak")
+	os.remove(path .. ".tmp")
 end
 
 function tests.state_save_requires_existing_or_lightroom_directory_creation()

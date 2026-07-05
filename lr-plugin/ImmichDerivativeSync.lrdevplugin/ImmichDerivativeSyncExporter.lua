@@ -108,9 +108,9 @@ function Exporter.exportItems(items, config, progressScope)
 			return nil, finalDirErr
 		end
 
-		local moved, moveErr = FileUtils.moveFile(exportedPathOrMessage, item.outputPath)
-		if not moved then
-			return nil, moveErr
+		local replaced, replaceErr = FileUtils.replaceFile(exportedPathOrMessage, item.outputPath)
+		if not replaced then
+			return nil, replaceErr
 		end
 	end
 

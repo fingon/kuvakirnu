@@ -1,6 +1,8 @@
 local FileUtils = require "ImmichDerivativeSyncFileUtils"
 
 local State = {}
+local backupStateSuffix = ".bak"
+local temporaryStateSuffix = ".tmp"
 
 local function maybeImport(name)
 	if type(import) ~= "function" then
@@ -56,7 +58,10 @@ local function ensureDirectory(path)
 	local probe = io.open(probePath, "w")
 	if probe then
 		probe:close()
-		FileUtils.deleteFile(probePath)
+		local deletedProbe, deleteProbeErr = FileUtils.deleteFile(probePath)
+		if not deletedProbe then
+			return nil, "failed to delete state directory probe: " .. tostring(deleteProbeErr)
+		end
 		return true
 	end
 
@@ -121,20 +126,33 @@ function State.save(path, state)
 		return nil, dirErr
 	end
 
-	local tempPath = path .. ".tmp"
+	local tempPath = path .. temporaryStateSuffix
 	local file, openErr = io.open(tempPath, "w")
 	if not file then
 		return nil, "failed to open temporary state file: " .. tostring(openErr)
 	end
 
-	file:write("return ")
-	file:write(serializeValue(state))
-	file:write("\n")
-	file:close()
+	local wrote, writeErr = file:write("return ", serializeValue(state), "\n")
+	if not wrote then
+		file:close()
+		local deletedTemp, deleteTempErr = FileUtils.deleteFile(tempPath)
+		if not deletedTemp then
+			return nil, "failed to write temporary state file: " .. tostring(writeErr) .. "; failed to delete temporary state file: " .. tostring(deleteTempErr)
+		end
+		return nil, "failed to write temporary state file: " .. tostring(writeErr)
+	end
+	local closed, closeErr = file:close()
+	if not closed then
+		local deletedTemp, deleteTempErr = FileUtils.deleteFile(tempPath)
+		if not deletedTemp then
+			return nil, "failed to close temporary state file: " .. tostring(closeErr) .. "; failed to delete temporary state file: " .. tostring(deleteTempErr)
+		end
+		return nil, "failed to close temporary state file: " .. tostring(closeErr)
+	end
 
-	local moved, moveErr = FileUtils.moveFile(tempPath, path)
-	if not moved then
-		return nil, "failed to replace state file: " .. tostring(moveErr)
+	local replaced, replaceErr = FileUtils.replaceFile(tempPath, path, { backupPath = path .. backupStateSuffix })
+	if not replaced then
+		return nil, "failed to replace state file: " .. tostring(replaceErr)
 	end
 
 	return true
