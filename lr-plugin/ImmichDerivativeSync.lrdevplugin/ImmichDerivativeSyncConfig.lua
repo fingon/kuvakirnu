@@ -5,6 +5,34 @@ Config.exportSettingsVersion = 1
 Config.defaultMinRating = 3
 Config.defaultLongEdgePixels = 3200
 Config.defaultJpegQuality = 85
+Config.defaultIncludeUnstarred = false
+Config.defaultIncludeVirtualCopies = false
+Config.preferenceKeys = {
+	"outputDirectory",
+	"minRating",
+	"longEdgePixels",
+	"jpegQuality",
+	"includeUnstarred",
+	"includeVirtualCopies",
+	"lastRunSummary",
+}
+
+local noStarThreshold = 0
+
+local function blank(value)
+	return value == nil or value == ""
+end
+
+local function normalizeBoolean(value, defaultValue)
+	if value == true then
+		return true
+	end
+	if value == false then
+		return false
+	end
+
+	return defaultValue
+end
 
 local function maybeImport(name)
 	if type(import) ~= "function" then
@@ -44,28 +72,89 @@ function Config.ensureDefaults(properties)
 	if properties.outputDirectory == nil then
 		properties.outputDirectory = ""
 	end
-	if properties.minRating == nil then
+	if blank(properties.minRating) then
 		properties.minRating = Config.defaultMinRating
 	end
-	if properties.longEdgePixels == nil then
+	if blank(properties.longEdgePixels) then
 		properties.longEdgePixels = Config.defaultLongEdgePixels
 	end
-	if properties.jpegQuality == nil then
+	if blank(properties.jpegQuality) then
 		properties.jpegQuality = Config.defaultJpegQuality
 	end
+	properties.includeUnstarred = normalizeBoolean(properties.includeUnstarred, Config.defaultIncludeUnstarred)
+	properties.includeVirtualCopies = normalizeBoolean(properties.includeVirtualCopies, Config.defaultIncludeVirtualCopies)
 	if properties.lastRunSummary == nil then
 		properties.lastRunSummary = "Never"
 	end
 end
 
+function Config.refreshDerivedProperties(properties)
+	if properties.outputDirectory == nil or properties.outputDirectory == "" then
+		properties.outputDirectoryDisplay = "Not selected"
+	else
+		properties.outputDirectoryDisplay = properties.outputDirectory
+	end
+	properties.ratingSummary = Config.ratingSummary(properties)
+end
+
+function Config.loadPreferencesIntoProperties(prefs, properties)
+	Config.ensureDefaults(prefs)
+	for _, key in ipairs(Config.preferenceKeys) do
+		properties[key] = prefs[key]
+	end
+	Config.ensureDefaults(properties)
+	Config.refreshDerivedProperties(properties)
+end
+
+function Config.savePropertiesToPreferences(properties, prefs)
+	Config.ensureDefaults(properties)
+	for _, key in ipairs(Config.preferenceKeys) do
+		prefs[key] = properties[key]
+	end
+	Config.refreshDerivedProperties(properties)
+end
+
+function Config.toggleMinRating(currentMinRating, selectedRating)
+	local current = tonumber(currentMinRating) or noStarThreshold
+	local selected = tonumber(selectedRating)
+	if selected == nil or selected < 1 or selected > 5 then
+		return current
+	end
+	if current == selected then
+		return noStarThreshold
+	end
+
+	return selected
+end
+
+function Config.ratingSummary(properties)
+	local minRating = tonumber(properties.minRating) or noStarThreshold
+	local includeUnstarred = properties.includeUnstarred == true
+
+	if minRating == noStarThreshold and includeUnstarred then
+		return "Selected: unstarred only"
+	end
+	if minRating == noStarThreshold then
+		return "Selected: none"
+	end
+	if includeUnstarred then
+		return "Selected: unstarred, " .. tostring(minRating) .. "+"
+	end
+
+	return "Selected: " .. tostring(minRating) .. "+"
+end
+
 function Config.fromProperties(properties)
 	Config.ensureDefaults(properties)
 
-	local minRating = tonumber(properties.minRating) or Config.defaultMinRating
+	local minRating = tonumber(properties.minRating)
 	local longEdgePixels = tonumber(properties.longEdgePixels) or Config.defaultLongEdgePixels
 	local jpegQuality = tonumber(properties.jpegQuality) or Config.defaultJpegQuality
 
-	if minRating < 0 or minRating > 5 then
+	if minRating == nil then
+		minRating = Config.defaultMinRating
+	end
+	if minRating < noStarThreshold or minRating > 5 then
 		return nil, "minimum rating must be between 0 and 5"
 	end
 	if longEdgePixels < 1 then
@@ -78,13 +167,19 @@ function Config.fromProperties(properties)
 		return nil, "output directory is not configured"
 	end
 
-	return {
+	local config = {
 		outputDirectory = properties.outputDirectory,
-		minRating = minRating,
+		includeUnstarred = properties.includeUnstarred == true,
+		includeVirtualCopies = properties.includeVirtualCopies == true,
 		longEdgePixels = longEdgePixels,
 		jpegQuality = jpegQuality,
 		exportSettingsVersion = Config.exportSettingsVersion,
 	}
+	if minRating ~= noStarThreshold then
+		config.minRating = minRating
+	end
+
+	return config
 end
 
 return Config

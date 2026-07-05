@@ -56,6 +56,8 @@ function Photo.snapshot(photo)
 		rating = rating,
 		isRejected = raw(photo, "isRejected") == true or raw(photo, "pickStatus") == -1,
 		isVirtualCopy = raw(photo, "isVirtualCopy") == true,
+		copyName = firstPresent(raw(photo, "copyName"), formatted(photo, "copyName")),
+		copyNumber = firstPresent(raw(photo, "copyNumber"), formatted(photo, "copyNumber")),
 		lastEditTime = firstPresent(raw(photo, "lastEditTime"), raw(photo, "lastUpdated"), raw(photo, "lastImportTime"), ""),
 	}
 end
@@ -65,6 +67,9 @@ function Photo.fingerprint(photo)
 		tostring(photo.sourcePath or ""),
 		tostring(photo.rating or ""),
 		tostring(photo.isRejected or false),
+		tostring(photo.isVirtualCopy or false),
+		tostring(photo.copyName or ""),
+		tostring(photo.copyNumber or ""),
 		tostring(photo.captureTime or ""),
 		tostring(photo.lastEditTime or ""),
 	}, "|")

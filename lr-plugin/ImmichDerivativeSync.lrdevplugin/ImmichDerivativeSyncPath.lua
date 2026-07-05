@@ -63,10 +63,30 @@ function Path.identifierSuffix(identifier)
 	return clean
 end
 
+function Path.copyMarker(photo)
+	if not photo.isVirtualCopy then
+		return nil
+	end
+
+	if photo.copyName and photo.copyName ~= "" then
+		return "copy-" .. Path.identifierSuffix(photo.copyName)
+	end
+	if photo.copyNumber and tostring(photo.copyNumber) ~= "" then
+		return "copy-" .. Path.identifierSuffix(photo.copyNumber)
+	end
+
+	return "copy"
+end
+
 function Path.derivativePath(outputDirectory, photo)
 	local year, day = dateParts(photo.captureTime)
 	local baseName = splitBaseName(photo.fileName or photo.sourcePath or "photo")
+	local copyMarker = Path.copyMarker(photo)
 	local suffix = Path.identifierSuffix(photo.identifier)
+	if copyMarker then
+		return pathJoin(outputDirectory, year, day, baseName .. "__" .. copyMarker .. "__lr-" .. suffix .. ".jpg")
+	end
+
 	return pathJoin(outputDirectory, year, day, baseName .. "__lr-" .. suffix .. ".jpg")
 end
 

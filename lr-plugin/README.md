@@ -24,12 +24,16 @@ an Immich External Library at that directory or at a synced copy of it.
 
 ## Current behavior
 
-- Exports one JPEG derivative per matching non-virtual catalog photo.
-- Includes photos with rating greater than or equal to the configured minimum
-  rating.
+- Exports one JPEG derivative per matching catalog photo.
+- Includes starred photos at or above the selected star threshold.
+- Can include unstarred photos independently from the star threshold.
+- Can include virtual copies when enabled.
 - Skips rejected photos.
 - Writes derivatives under `YYYY/YYYY-MM-DD/`.
 - Uses stable filenames shaped like `IMG_1234__lr-<lightroom-id>.jpg`.
+- Uses filenames shaped like
+  `IMG_1234__copy-BlackWhite__lr-<lightroom-id>.jpg` for virtual copies when
+  Lightroom exposes a copy name.
 - Reuses the recorded output path for already-seen photos so Immich asset paths
   remain stable.
 - Stores sync state in a plugin-owned Lua manifest file.
@@ -42,7 +46,11 @@ an Immich External Library at that directory or at a synced copy of it.
 Configure the plugin in Lightroom Classic Plug-in Manager:
 
 - Output folder.
-- Minimum star rating, default `3`.
+- `Include unstarred` button, default off.
+- Clickable fixed-title star threshold buttons from one through five stars,
+  default `3+`; clicking the selected threshold again clears starred-photo
+  selection. The selected state is shown in a summary line.
+- Virtual copy inclusion toggle, default off.
 - JPEG long edge, default `3200`.
 - JPEG quality, default `85`.
 
@@ -66,6 +74,14 @@ If Lightroom reports `Could not load toolkit script`, quit Lightroom Classic
 completely and reopen it after changing plugin files. Lightroom can cache plugin
 script layout between reloads.
 
+If settings appear blank after upgrading from an older development build, reopen
+the Plug-in Manager page. The plugin normalizes blank persisted values back to
+its defaults when the settings page loads.
+
+Settings are stored in Lightroom plugin preferences. If a setting does not
+survive closing and reopening the Plug-in Manager, that is a bug in the settings
+sync layer rather than expected behavior.
+
 The plugin keeps its Lua modules as root-level toolkit scripts with names such
 as `ImmichDerivativeSyncConfig.lua`. Do not move them into a subdirectory unless
 the Lightroom loader setup is changed at the same time.
@@ -74,7 +90,6 @@ the Lightroom loader setup is changed at the same time.
 
 - No Immich API integration.
 - No background interval sync.
-- No virtual copy support.
 - No video or Live Photo support.
 - No automatic cleanup of temporary mobile uploads.
 - No bidirectional metadata sync.

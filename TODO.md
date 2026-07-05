@@ -9,9 +9,17 @@ Remaining work for the Lightroom Classic-to-Immich derivative sync plugin.
 - Confirm the root-level toolkit script layout fixes `Could not load toolkit
   script` errors after a full Lightroom restart.
 - Confirm the Plug-in Manager settings panel persists values correctly.
+- Confirm changed settings survive closing and reopening the Plug-in Manager and
+  restarting Lightroom Classic.
+- Confirm the output folder setting is picker-only and cannot be edited as
+  arbitrary text.
+- Confirm fixed-title star rating controls select and clear thresholds and
+  update the rating summary correctly.
+- Confirm the unstarred button and virtual-copy checkbox persist correctly.
 - Confirm `catalog:getAllPhotos()` and the metadata keys used in
   `Photo.snapshot` return the expected identifiers, capture timestamps, ratings,
   rejected state, and virtual-copy state.
+- Confirm virtual-copy exports get unique filenames for named and unnamed copies.
 - Confirm Lightroom export settings produce JPEGs with intended dimensions,
   quality, color space, and embedded metadata.
 - Confirm exported rendition paths returned by Lightroom are moved into the
@@ -34,7 +42,8 @@ Remaining work for the Lightroom Classic-to-Immich derivative sync plugin.
 - Add tests for failed export state transitions.
 - Add tests for output path collisions.
 - Add tests for photos without capture dates or source filenames.
-- Add repository pre-commit configuration so `prek run --all-files` is useful.
+- Add tests for Lightroom-specific settings control behavior after SDK runtime
+  validation.
 
 ## Feature backlog
 
@@ -45,7 +54,6 @@ Remaining work for the Lightroom Classic-to-Immich derivative sync plugin.
   - collection-based curated exports
   - edited-only exports
   - source-folder and date-range filters
-- Virtual copy support with stable copy-specific filenames.
 - Orphan review UI with archive, delete, and keep actions.
 - Immich API integration to trigger External Library scans.
 - Optional Lightroom collection to Immich album mapping.

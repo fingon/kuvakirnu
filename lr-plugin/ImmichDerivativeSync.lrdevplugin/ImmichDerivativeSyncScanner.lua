@@ -3,14 +3,22 @@ local Photo = require "ImmichDerivativeSyncPhoto"
 local Scanner = {}
 
 function Scanner.matches(photo, config)
-	if photo.isVirtualCopy then
+	if photo.isVirtualCopy and not config.includeVirtualCopies then
 		return false
 	end
 	if photo.isRejected then
 		return false
 	end
 
-	return (tonumber(photo.rating) or 0) >= config.minRating
+	local rating = tonumber(photo.rating) or 0
+	if rating == 0 then
+		return config.includeUnstarred == true
+	end
+	if config.minRating == nil then
+		return false
+	end
+
+	return rating >= config.minRating
 end
 
 function Scanner.plan(photos, state, config, pathGenerator, fileExists)
