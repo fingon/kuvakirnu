@@ -71,6 +71,8 @@ local function observeProperty(context, properties, key)
 end
 
 local function observePreferences(context, properties)
+	observeProperty(context, properties, "includeUnstarred")
+	observeProperty(context, properties, "minRating")
 	observeProperty(context, properties, "includeVirtualCopies")
 	observeProperty(context, properties, "longEdgePixels")
 	observeProperty(context, properties, "jpegQuality")
@@ -166,6 +168,7 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 					},
 					viewFactory:static_text {
 						title = bind "ratingSummary",
+						fill_horizontal = 1,
 					},
 				},
 				viewFactory:row {
@@ -179,6 +182,13 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 						value = bind "includeVirtualCopies",
 					},
 				},
+			},
+		},
+		{
+			title = "Output",
+			viewFactory:column {
+				bind_to_object = properties,
+				spacing = viewFactory:control_spacing(),
 				viewFactory:row {
 					spacing = viewFactory:control_spacing(),
 					viewFactory:static_text {
@@ -201,6 +211,31 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 						value = bind "jpegQuality",
 						width_in_digits = 3,
 						immediate = true,
+					},
+				},
+			},
+		},
+		{
+			title = "Last Run",
+			viewFactory:column {
+				bind_to_object = properties,
+				spacing = viewFactory:control_spacing(),
+				viewFactory:row {
+					spacing = viewFactory:control_spacing(),
+					viewFactory:static_text {
+						title = "Sync",
+						width = LrView.share "labelWidth",
+					},
+					viewFactory:push_button {
+						title = "Sync Now",
+						enabled = bind "canSync",
+						action = function()
+							syncNow(properties)
+						end,
+					},
+					viewFactory:static_text {
+						title = bind "syncAvailabilitySummary",
+						fill_horizontal = 1,
 					},
 				},
 				viewFactory:row {
@@ -247,23 +282,13 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 						width_in_chars = 72,
 					},
 				},
-				viewFactory:row {
-					spacing = viewFactory:control_spacing(),
-					viewFactory:static_text {
-						title = "Sync",
-						width = LrView.share "labelWidth",
-					},
-					viewFactory:push_button {
-						title = "Sync Now",
-						enabled = bind "canSync",
-						action = function()
-							syncNow(properties)
-						end,
-					},
-					viewFactory:static_text {
-						title = bind "syncAvailabilitySummary",
-					},
-				},
+			},
+		},
+		{
+			title = "Files",
+			viewFactory:column {
+				bind_to_object = properties,
+				spacing = viewFactory:control_spacing(),
 				viewFactory:row {
 					spacing = viewFactory:control_spacing(),
 					viewFactory:static_text {
@@ -282,6 +307,7 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 					},
 					viewFactory:static_text {
 						title = bind "logFilePath",
+						fill_horizontal = 1,
 					},
 				},
 			},

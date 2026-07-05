@@ -33,6 +33,11 @@ Notes from building and testing this plugin against Lightroom Classic.
   itself is the source of visible state.
 - `LrView` does not provide a native directory picker control. Use a static path
   label plus a `Choose...` button backed by `LrDialogs.runOpenPanel`.
+- `LrView` bound `static_text` widgets auto-size to the initial title string and
+  do **not** resize when the bound value changes. A longer bound string renders
+  as empty (clipped) rather than truncating visibly. Always set
+  `fill_horizontal = 1` or `width_in_chars` on bound `static_text` labels whose
+  content can grow.
 
 ## Yielding and async work
 
