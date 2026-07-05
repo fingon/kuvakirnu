@@ -29,7 +29,23 @@ local function moveFile(sourcePath, targetPath)
 	return true
 end
 
+local function deleteFile(path)
+	local LrFileUtils = maybeImport("LrFileUtils")
+	if LrFileUtils and LrFileUtils.delete then
+		LrFileUtils.delete(path)
+		return true
+	end
+
+	local ok, err = os.remove(path)
+	if not ok then
+		return nil, err
+	end
+
+	return true
+end
+
 return {
 	maybeImport = maybeImport,
 	moveFile = moveFile,
+	deleteFile = deleteFile,
 }

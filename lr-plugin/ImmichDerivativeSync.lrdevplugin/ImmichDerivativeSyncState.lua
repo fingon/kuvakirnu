@@ -56,7 +56,7 @@ local function ensureDirectory(path)
 	local probe = io.open(probePath, "w")
 	if probe then
 		probe:close()
-		os.remove(probePath)
+		FileUtils.deleteFile(probePath)
 		return true
 	end
 
