@@ -10,6 +10,12 @@ return {
 			file = "SyncMenu.lua",
 		},
 	},
+	LrExportMenuItems = {
+		{
+			title = "Sync Derivatives to Folder",
+			file = "SyncMenu.lua",
+		},
+	},
 	VERSION = {
 		major = 0,
 		minor = 1,

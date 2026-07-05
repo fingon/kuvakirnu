@@ -95,6 +95,8 @@ function Config.refreshDerivedProperties(properties)
 		properties.outputDirectoryDisplay = properties.outputDirectory
 	end
 	properties.ratingSummary = Config.ratingSummary(properties)
+	properties.canSync = Config.canSync(properties)
+	properties.syncAvailabilitySummary = Config.syncAvailabilitySummary(properties)
 end
 
 function Config.loadPreferencesIntoProperties(prefs, properties)
@@ -142,6 +144,27 @@ function Config.ratingSummary(properties)
 	end
 
 	return "Selected: " .. tostring(minRating) .. "+"
+end
+
+function Config.canSync(properties)
+	Config.ensureDefaults(properties)
+	if properties.outputDirectory == nil or properties.outputDirectory == "" then
+		return false
+	end
+
+	local minRating = tonumber(properties.minRating) or noStarThreshold
+	return properties.includeUnstarred == true or (minRating >= 1 and minRating <= 5)
+end
+
+function Config.syncAvailabilitySummary(properties)
+	if Config.canSync(properties) then
+		return "Ready to sync."
+	end
+	if properties.outputDirectory == nil or properties.outputDirectory == "" then
+		return "Select an output folder."
+	end
+
+	return "Select unstarred or a star threshold."
 end
 
 function Config.fromProperties(properties)

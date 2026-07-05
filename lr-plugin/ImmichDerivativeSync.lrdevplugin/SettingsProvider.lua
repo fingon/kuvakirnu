@@ -5,6 +5,7 @@ local LrPrefs = import "LrPrefs"
 local LrView = import "LrView"
 
 local Config = require "ImmichDerivativeSyncConfig"
+local SyncLauncher = require "ImmichDerivativeSyncSyncLauncher"
 
 local includeUnstarredTitle = "Include unstarred"
 local includeVirtualCopiesTitle = "Include virtual copies"
@@ -15,6 +16,14 @@ end
 
 local function saveProperties(properties)
 	Config.savePropertiesToPreferences(properties, LrPrefs.prefsForPlugin())
+end
+
+local function syncNow(properties)
+	saveProperties(properties)
+	refreshDerivedProperties(properties)
+	if properties.canSync then
+		SyncLauncher.runAsync()
+	end
 end
 
 local function browseForOutputDirectory(properties)
@@ -202,6 +211,23 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 					},
 					viewFactory:static_text {
 						title = bind "lastRunSummary",
+					},
+				},
+				viewFactory:row {
+					spacing = viewFactory:control_spacing(),
+					viewFactory:static_text {
+						title = "Sync",
+						width = LrView.share "labelWidth",
+					},
+					viewFactory:push_button {
+						title = "Sync Now",
+						enabled = bind "canSync",
+						action = function()
+							syncNow(properties)
+						end,
+					},
+					viewFactory:static_text {
+						title = bind "syncAvailabilitySummary",
 					},
 				},
 				viewFactory:row {

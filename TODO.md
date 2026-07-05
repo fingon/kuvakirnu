@@ -2,6 +2,9 @@
 
 Remaining work for the Lightroom Classic-to-Immich derivative sync plugin.
 
+See `lr-plugin/LIGHTROOM_GOTCHAS.md` for Lightroom SDK behavior discovered while
+building this plugin.
+
 ## Before trusting the plugin with a real catalog
 
 - Validate the plugin in Lightroom Classic on macOS.
@@ -11,6 +14,12 @@ Remaining work for the Lightroom Classic-to-Immich derivative sync plugin.
 - Confirm the Plug-in Manager settings panel persists values correctly.
 - Confirm changed settings survive closing and reopening the Plug-in Manager and
   restarting Lightroom Classic.
+- Confirm `Sync Now` is enabled and disabled based on output folder and rating
+  selection state.
+- Confirm sync command appears under both Library and File Plug-in Extras after
+  plugin reload or Lightroom restart.
+- Confirm sync progress captions appear quickly on large catalogs and canceling
+  the progress dialog stops cleanly before export/state save phases.
 - Confirm the output folder setting is picker-only and cannot be edited as
   arbitrary text.
 - Confirm fixed-title star rating controls select and clear thresholds and

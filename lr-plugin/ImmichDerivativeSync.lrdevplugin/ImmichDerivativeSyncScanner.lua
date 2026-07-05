@@ -2,6 +2,30 @@ local Photo = require "ImmichDerivativeSyncPhoto"
 
 local Scanner = {}
 
+local function maybeImport(name)
+	if type(import) ~= "function" then
+		return nil
+	end
+
+	local ok, module = pcall(import, name)
+	if ok then
+		return module
+	end
+
+	return nil
+end
+
+local function yield()
+	local LrTasks = maybeImport("LrTasks")
+	if LrTasks and LrTasks.yield then
+		LrTasks.yield()
+	end
+end
+
+local function canceled(progressScope)
+	return progressScope and progressScope.isCanceled and progressScope:isCanceled()
+end
+
 function Scanner.matches(photo, config)
 	if photo.isVirtualCopy and not config.includeVirtualCopies then
 		return false
@@ -21,12 +45,22 @@ function Scanner.matches(photo, config)
 	return rating >= config.minRating
 end
 
-function Scanner.plan(photos, state, config, pathGenerator, fileExists)
+function Scanner.plan(photos, state, config, pathGenerator, fileExists, progressScope)
 	local exports = {}
 	local orphans = {}
 	local seen = {}
+	local totalPhotos = #photos
 
-	for _, handle in ipairs(photos) do
+	for index, handle in ipairs(photos) do
+		if canceled(progressScope) then
+			return nil, "sync canceled"
+		end
+		if progressScope and index % 100 == 0 then
+			progressScope:setCaption("Planning derivatives " .. tostring(index) .. " of " .. tostring(totalPhotos))
+			progressScope:setPortionComplete(index, totalPhotos)
+			yield()
+		end
+
 		local photo = handle.identifier and handle or Photo.snapshot(handle)
 		local record = state.photos[photo.identifier]
 		seen[photo.identifier] = true
@@ -53,6 +87,11 @@ function Scanner.plan(photos, state, config, pathGenerator, fileExists)
 				record = record,
 			}
 		end
+	end
+
+	if progressScope then
+		progressScope:setCaption("Planning derivatives " .. tostring(totalPhotos) .. " of " .. tostring(totalPhotos))
+		progressScope:setPortionComplete(totalPhotos, totalPhotos)
 	end
 
 	return {

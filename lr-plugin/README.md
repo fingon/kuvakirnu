@@ -19,8 +19,14 @@ folder as an External Library.
 
 Run `Library > Plug-in Extras > Sync Derivatives to Folder`.
 
-The plugin exports matching photos into the configured output directory. Point
-an Immich External Library at that directory or at a synced copy of it.
+The same command is also available from `File > Plug-in Extras` and as `Sync
+Now` in the plugin settings panel. The plugin exports matching photos into the
+configured output directory. Point an Immich External Library at that directory
+or at a synced copy of it.
+
+Sync shows Lightroom progress captions while loading state, reading the catalog,
+planning derivatives, exporting, and saving state. Canceling the progress dialog
+stops before later phases when possible.
 
 ## Current behavior
 
@@ -53,6 +59,8 @@ Configure the plugin in Lightroom Classic Plug-in Manager:
 - Virtual copy inclusion toggle, default off.
 - JPEG long edge, default `3200`.
 - JPEG quality, default `85`.
+- `Sync Now`, enabled when an output folder and at least one rating selection
+  are configured.
 
 ## Development
 
@@ -70,21 +78,9 @@ Lightroom Classic.
 
 ## Troubleshooting
 
-If Lightroom reports `Could not load toolkit script`, quit Lightroom Classic
-completely and reopen it after changing plugin files. Lightroom can cache plugin
-script layout between reloads.
-
-If settings appear blank after upgrading from an older development build, reopen
-the Plug-in Manager page. The plugin normalizes blank persisted values back to
-its defaults when the settings page loads.
-
-Settings are stored in Lightroom plugin preferences. If a setting does not
-survive closing and reopening the Plug-in Manager, that is a bug in the settings
-sync layer rather than expected behavior.
-
-The plugin keeps its Lua modules as root-level toolkit scripts with names such
-as `ImmichDerivativeSyncConfig.lua`. Do not move them into a subdirectory unless
-the Lightroom loader setup is changed at the same time.
+See [LIGHTROOM_GOTCHAS.md](LIGHTROOM_GOTCHAS.md) for Lightroom Classic SDK
+runtime notes, including toolkit script loading, settings persistence, yielding,
+and filesystem limitations.
 
 ## Known MVP limits
 

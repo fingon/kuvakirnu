@@ -2,6 +2,7 @@ package.path = "lr-plugin/ImmichDerivativeSync.lrdevplugin/?.lua;tests/?.lua;" .
 
 local Config = require "ImmichDerivativeSyncConfig"
 local Path = require "ImmichDerivativeSyncPath"
+local Photo = require "ImmichDerivativeSyncPhoto"
 local Scanner = require "ImmichDerivativeSyncScanner"
 local State = require "ImmichDerivativeSyncState"
 
@@ -23,6 +24,18 @@ local function assertNil(value, message)
 	if value ~= nil then
 		error((message or "expected nil") .. ": got " .. tostring(value), 2)
 	end
+end
+
+local function fakeLightroomPhoto(rawMetadata, formattedMetadata)
+	return {
+		localIdentifier = rawMetadata and rawMetadata.localIdentifier,
+		getRawMetadata = function(_, key)
+			return rawMetadata and rawMetadata[key] or nil
+		end,
+		getFormattedMetadata = function(_, key)
+			return formattedMetadata and formattedMetadata[key] or nil
+		end,
+	}
 end
 
 function tests.path_generation_is_stable_and_sanitized()
@@ -68,6 +81,28 @@ function tests.path_generation_marks_fallback_virtual_copies()
 	})
 
 	assertEqual(path, "/out/2025/2025-09-03/IMG_1234__copy__lr-copy-123.jpg")
+end
+
+function tests.photo_snapshot_handles_missing_path_and_filename_metadata()
+	local snapshot = Photo.snapshot(fakeLightroomPhoto({
+		localIdentifier = "local-1",
+		rating = 0,
+	}, {}))
+
+	assertEqual(snapshot.identifier, "local-1")
+	assertEqual(snapshot.sourcePath, "")
+	assertEqual(snapshot.fileName, "photo")
+end
+
+function tests.photo_snapshot_derives_filename_from_source_path()
+	local snapshot = Photo.snapshot(fakeLightroomPhoto({
+		localIdentifier = "local-1",
+		path = "/photos/IMG_1234.CR3",
+		rating = 0,
+	}, {}))
+
+	assertEqual(snapshot.sourcePath, "/photos/IMG_1234.CR3")
+	assertEqual(snapshot.fileName, "IMG_1234.CR3")
 end
 
 function tests.scanner_filters_rating_rejected_and_virtual_copy()
@@ -138,6 +173,53 @@ function tests.scanner_includes_virtual_copies_when_enabled()
 
 	assertEqual(#planned.exports, 1)
 	assertEqual(planned.exports[1].photo.identifier, "a")
+end
+
+function tests.scanner_plan_can_be_canceled()
+	local config = { outputDirectory = "/out", minRating = 3, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local state = State.empty()
+	local progressScope = {
+		isCanceled = function()
+			return true
+		end,
+	}
+
+	local planned, err = Scanner.plan({
+		{ identifier = "a", fileName = "a.jpg", rating = 3, isRejected = false, isVirtualCopy = false },
+	}, state, config, Path.derivativePath, function()
+		return false
+	end, progressScope)
+
+	assertNil(planned)
+	assertEqual(err, "sync canceled")
+end
+
+function tests.scanner_plan_updates_progress_scope()
+	local config = { outputDirectory = "/out", minRating = 3, includeUnstarred = false, includeVirtualCopies = false, exportSettingsVersion = 1 }
+	local state = State.empty()
+	local captions = {}
+	local progressScope = {
+		isCanceled = function()
+			return false
+		end,
+		setCaption = function(_, caption)
+			captions[#captions + 1] = caption
+		end,
+		setPortionComplete = function()
+		end,
+	}
+
+	local photos = {}
+	for index = 1, 100 do
+		photos[index] = { identifier = "a" .. tostring(index), fileName = "a.jpg", rating = 3, isRejected = false, isVirtualCopy = false }
+	end
+
+	local planned, err = Scanner.plan(photos, state, config, Path.derivativePath, function()
+		return false
+	end, progressScope)
+
+	assertTrue(planned, err)
+	assertTrue(#captions >= 1)
 end
 
 function tests.scanner_reuses_existing_output_path()
@@ -250,6 +332,26 @@ function tests.config_rating_summary_describes_empty_selection()
 	assertEqual(Config.ratingSummary({ minRating = 0, includeUnstarred = false }), "Selected: none")
 end
 
+function tests.config_can_sync_requires_output_folder()
+	assertEqual(Config.canSync({ outputDirectory = "", minRating = 3, includeUnstarred = false }), false)
+	assertEqual(Config.syncAvailabilitySummary({ outputDirectory = "", minRating = 3, includeUnstarred = false }), "Select an output folder.")
+end
+
+function tests.config_can_sync_with_default_star_threshold()
+	assertEqual(Config.canSync({ outputDirectory = "/out", minRating = 3, includeUnstarred = false }), true)
+	assertEqual(Config.syncAvailabilitySummary({ outputDirectory = "/out", minRating = 3, includeUnstarred = false }), "Ready to sync.")
+end
+
+function tests.config_can_sync_with_unstarred_only()
+	assertEqual(Config.canSync({ outputDirectory = "/out", minRating = 0, includeUnstarred = true }), true)
+end
+
+function tests.config_can_sync_rejects_empty_rating_selection()
+	local properties = { outputDirectory = "/out", minRating = 0, includeUnstarred = false }
+	assertEqual(Config.canSync(properties), false)
+	assertEqual(Config.syncAvailabilitySummary(properties), "Select unstarred or a star threshold.")
+end
+
 function tests.state_round_trips()
 	local path = os.tmpname()
 	local state = State.empty()
@@ -267,6 +369,16 @@ function tests.state_round_trips()
 	assertEqual(loaded.photos.a.status, "exported")
 
 	os.remove(path)
+end
+
+function tests.state_save_requires_existing_or_lightroom_directory_creation()
+	local state = State.empty()
+	local path = "missing-test-dir/state.lua"
+
+	local ok, err = State.save(path, state)
+
+	assertNil(ok)
+	assertTrue(tostring(err):match("failed to create state directory") ~= nil)
 end
 
 function tests.state_reports_corruption()

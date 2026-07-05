@@ -1,5 +1,18 @@
 local State = {}
 
+local function maybeImport(name)
+	if type(import) ~= "function" then
+		return nil
+	end
+
+	local ok, module = pcall(import, name)
+	if ok then
+		return module
+	end
+
+	return nil
+end
+
 local function serializeValue(value, indent)
 	indent = indent or ""
 	local valueType = type(value)
@@ -34,9 +47,23 @@ end
 
 local function ensureDirectory(path)
 	local directory = path:match("^(.*)[/\\][^/\\]+$") or "."
-	local command = string.format("mkdir -p %q", directory)
-	local ok = os.execute(command)
-	if ok == true or ok == 0 then
+	if directory == "." then
+		return true
+	end
+	local probePath = directory .. "/.immich-derivative-sync-write-test"
+	local probe = io.open(probePath, "w")
+	if probe then
+		probe:close()
+		os.remove(probePath)
+		return true
+	end
+
+	local LrFileUtils = maybeImport("LrFileUtils")
+	if LrFileUtils and LrFileUtils.createAllDirectories then
+		local ok, err = LrFileUtils.createAllDirectories(directory)
+		if ok == false then
+			return nil, err
+		end
 		return true
 	end
 

@@ -25,9 +25,7 @@ local function mkdirp(directory)
 		return true
 	end
 
-	local command = string.format("mkdir -p %q", directory)
-	local ok = os.execute(command)
-	if ok == true or ok == 0 then
+	if directory == "." then
 		return true
 	end
 

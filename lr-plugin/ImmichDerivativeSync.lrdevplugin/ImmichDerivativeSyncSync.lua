@@ -20,15 +20,20 @@ local function statePath()
 end
 
 local function catalogPhotos(catalog)
-	local photos
-	catalog:withReadAccessDo("ImmichDerivativeSyncScan", function()
-		photos = catalog:getAllPhotos()
-	end)
-	return photos or {}
+	return catalog:getAllPhotos() or {}
 end
 
 local function now()
 	return os.date("!%Y-%m-%dT%H:%M:%SZ")
+end
+
+local function canceled(progressScope)
+	return progressScope and progressScope.isCanceled and progressScope:isCanceled()
+end
+
+local function finish(progressScope)
+	progressScope:done()
+	running = false
 end
 
 local function updateLastRun(properties, exportedCount, skippedCount, orphanCount, failedCount)
@@ -56,61 +61,90 @@ function Sync.run()
 	end
 
 	local progressScope = LrProgressScope({ title = "Immich Derivative Sync" })
-	local ok, err = pcall(function()
-		local state, stateErr = State.load(statePath())
-		if not state then
-			error(stateErr)
-		end
 
-		local catalog = LrApplication.activeCatalog()
-		local photos = catalogPhotos(catalog)
-		local plan = Scanner.plan(photos, state, config, Path.derivativePath, Exporter.fileExists)
-		local exportedCount = 0
-		local failedCount = 0
-
-		for _, orphan in ipairs(plan.orphans) do
-			State.markOrphaned(state, orphan, now())
-		end
-
-		for _, item in ipairs(plan.exports) do
-			item.configExportSettingsVersion = config.exportSettingsVersion
-			local exportOk, exportErr = Exporter.exportItems({ item }, config, progressScope)
-			if exportOk then
-				State.markExported(state, item, item.outputPath, now())
-				exportedCount = exportedCount + 1
-			else
-				State.markFailed(state, item, exportErr)
-				failedCount = failedCount + 1
-				Logger.error("photo_export_failed", {
-					photo = item.photo.identifier,
-					output = item.outputPath,
-					error = exportErr,
-				})
-			end
-		end
-
-		local saveOk, saveErr = State.save(statePath(), state)
-		if not saveOk then
-			error(saveErr)
-		end
-
-		local skippedCount = #photos - #plan.exports - #plan.orphans
-		updateLastRun(properties, exportedCount, skippedCount, #plan.orphans, failedCount)
-		if failedCount > 0 then
-			LrDialogs.message(
-				"Immich Derivative Sync completed with failures",
-				"Some photos failed to export. Check the Lightroom plugin log and state file.",
-				"warning"
-			)
-		end
-	end)
-
-	progressScope:done()
-	running = false
-
-	if not ok then
-		return nil, err
+	progressScope:setCaption("Loading sync state")
+	local state, stateErr = State.load(statePath())
+	if not state then
+		finish(progressScope)
+		return nil, stateErr
 	end
+
+	if canceled(progressScope) then
+		finish(progressScope)
+		return nil, "sync canceled"
+	end
+
+	progressScope:setCaption("Reading Lightroom catalog")
+	local catalog = LrApplication.activeCatalog()
+	local photos = catalogPhotos(catalog)
+	if canceled(progressScope) then
+		finish(progressScope)
+		return nil, "sync canceled"
+	end
+
+	progressScope:setCaption("Planning derivatives")
+	local plan, planErr = Scanner.plan(photos, state, config, Path.derivativePath, Exporter.fileExists, progressScope)
+	if not plan then
+		finish(progressScope)
+		return nil, planErr
+	end
+	local exportedCount = 0
+	local failedCount = 0
+
+	progressScope:setCaption("Marking orphans")
+	for index, orphan in ipairs(plan.orphans) do
+		if canceled(progressScope) then
+			finish(progressScope)
+			return nil, "sync canceled"
+		end
+		if index % 100 == 0 then
+			progressScope:setCaption("Marking orphans " .. tostring(index) .. " of " .. tostring(#plan.orphans))
+		end
+		State.markOrphaned(state, orphan, now())
+	end
+
+	progressScope:setCaption("Exporting 0 of " .. tostring(#plan.exports))
+	for index, item in ipairs(plan.exports) do
+		if canceled(progressScope) then
+			finish(progressScope)
+			return nil, "sync canceled"
+		end
+		progressScope:setCaption("Exporting " .. tostring(index) .. " of " .. tostring(#plan.exports))
+		progressScope:setPortionComplete(index - 1, #plan.exports)
+		item.configExportSettingsVersion = config.exportSettingsVersion
+		local exportOk, exportErr = Exporter.exportItems({ item }, config, progressScope)
+		if exportOk then
+			State.markExported(state, item, item.outputPath, now())
+			exportedCount = exportedCount + 1
+		else
+			State.markFailed(state, item, exportErr)
+			failedCount = failedCount + 1
+			Logger.error("photo_export_failed", {
+				photo = item.photo.identifier,
+				output = item.outputPath,
+				error = exportErr,
+			})
+		end
+	end
+
+	progressScope:setCaption("Saving sync state")
+	local saveOk, saveErr = State.save(statePath(), state)
+	if not saveOk then
+		finish(progressScope)
+		return nil, saveErr
+	end
+
+	local skippedCount = #photos - #plan.exports - #plan.orphans
+	updateLastRun(properties, exportedCount, skippedCount, #plan.orphans, failedCount)
+	if failedCount > 0 then
+		LrDialogs.message(
+			"Immich Derivative Sync completed with failures",
+			"Some photos failed to export. Check the Lightroom plugin log and state file.",
+			"warning"
+		)
+	end
+
+	finish(progressScope)
 
 	return true
 end

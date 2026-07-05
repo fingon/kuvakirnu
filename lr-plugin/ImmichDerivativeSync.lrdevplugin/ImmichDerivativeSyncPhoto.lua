@@ -31,8 +31,8 @@ local function formatted(photo, key)
 end
 
 local function firstPresent(...)
-	local values = { ... }
-	for _, value in ipairs(values) do
+	for index = 1, select("#", ...) do
+		local value = select(index, ...)
 		if value ~= nil and value ~= "" then
 			return value
 		end
@@ -43,8 +43,12 @@ end
 
 function Photo.snapshot(photo)
 	local identifier = firstPresent(raw(photo, "uuid"), raw(photo, "localIdentifier"), photo.localIdentifier, tostring(photo))
-	local sourcePath = firstPresent(raw(photo, "path"), formatted(photo, "fileName"), "")
-	local fileName = firstPresent(raw(photo, "fileName"), formatted(photo, "fileName"), sourcePath:match("[^/\\]+$"), "photo")
+	local rawPath = raw(photo, "path")
+	local formattedFileName = formatted(photo, "fileName")
+	local rawFileName = raw(photo, "fileName")
+	local sourcePath = rawPath or ""
+	local sourcePathFileName = tostring(sourcePath):match("[^/\\]+$")
+	local fileName = firstPresent(rawFileName, formattedFileName, sourcePathFileName, "photo")
 	local rating = tonumber(firstPresent(raw(photo, "rating"), 0)) or 0
 
 	return {
