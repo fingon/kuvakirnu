@@ -1403,10 +1403,10 @@ function tests.config_can_sync_with_default_star_threshold()
 	assertEqual(
 		Config.syncAvailabilitySummary({
 			outputDirectory = "/out",
-			minRating = 3,
+			minRating = 0,
 			includeUnstarred = false,
 		}),
-		"Ready to sync."
+		"Select unstarred, a star threshold, or a smart collection filter."
 	)
 end
 
@@ -1427,7 +1427,7 @@ function tests.config_can_sync_rejects_empty_rating_selection()
 	assertEqual(Config.canSync(properties), false)
 	assertEqual(
 		Config.syncAvailabilitySummary(properties),
-		"Select unstarred or a star threshold."
+		"Select unstarred, a star threshold, or a smart collection filter."
 	)
 end
 
@@ -1868,6 +1868,416 @@ function tests.config_saves_normalized_blank_properties()
 	assertEqual(prefs.jpegQuality, 85)
 	assertEqual(prefs.includeUnstarred, false)
 	assertEqual(prefs.includeVirtualCopies, false)
+end
+
+function tests.catalog_get_matching_smart_collections()
+	local sc = {
+		{
+			getName = function()
+				return "Five Stars"
+			end,
+			isSmartCollection = function()
+				return true
+			end,
+		},
+		{
+			getName = function()
+				return "Recently Modified"
+			end,
+			isSmartCollection = function()
+				return true
+			end,
+		},
+		{
+			getName = function()
+				return "Past Month"
+			end,
+			isSmartCollection = function()
+				return true
+			end,
+		},
+		{
+			getName = function()
+				return "Video Files"
+			end,
+			isSmartCollection = function()
+				return true
+			end,
+		},
+		{
+			getName = function()
+				return "five stars"
+			end,
+			isSmartCollection = function()
+				return true
+			end,
+		},
+	}
+	local catalog = {
+		getChildCollections = function()
+			return sc
+		end,
+		getChildCollectionSets = function()
+			return {}
+		end,
+	}
+
+	local matching = Catalog.getMatchingSmartCollections(catalog, "Five")
+	assertEqual(#matching, 1)
+	assertEqual(matching[1]:getName(), "Five Stars")
+	matching = Catalog.getMatchingSmartCollections(catalog, "five")
+	assertEqual(#matching, 1)
+	assertEqual(matching[1]:getName(), "five stars")
+	matching = Catalog.getMatchingSmartCollections(catalog, "NothingHere")
+	assertEqual(#matching, 0)
+end
+
+function tests.catalog_get_matching_smart_collections_empty_filter()
+	local sc = {
+		{
+			getName = function()
+				return "Five Stars"
+			end,
+			isSmartCollection = function()
+				return true
+			end,
+		},
+		{
+			getName = function()
+				return "Recently Modified"
+			end,
+			isSmartCollection = function()
+				return true
+			end,
+		},
+	}
+	local catalog = {
+		getChildCollections = function()
+			return sc
+		end,
+		getChildCollectionSets = function()
+			return {}
+		end,
+	}
+
+	local matching = Catalog.getMatchingSmartCollections(catalog, "")
+	assertEqual(#matching, 2)
+end
+
+function tests.catalog_get_matching_smart_collections_no_match()
+	local sc = {
+		{
+			getName = function()
+				return "Five Stars"
+			end,
+			isSmartCollection = function()
+				return true
+			end,
+		},
+		{
+			getName = function()
+				return "Recently Modified"
+			end,
+			isSmartCollection = function()
+				return true
+			end,
+		},
+	}
+	local catalog = {
+		getChildCollections = function()
+			return sc
+		end,
+		getChildCollectionSets = function()
+			return {}
+		end,
+	}
+
+	local matching = Catalog.getMatchingSmartCollections(catalog, "XYZ")
+	assertEqual(#matching, 0)
+end
+
+function tests.catalog_get_matching_smart_collections_no_catalog()
+	local matching = Catalog.getMatchingSmartCollections(nil, "test")
+	assertEqual(#matching, 0)
+end
+
+function tests.catalog_get_matching_smart_collections_nested()
+	local nestedSetSc = {
+		{
+			getName = function()
+				return "Nested In Set"
+			end,
+			isSmartCollection = function()
+				return true
+			end,
+		},
+	}
+	local nestedSet = {
+		getChildCollections = function()
+			return nestedSetSc
+		end,
+		getChildCollectionSets = function()
+			return {}
+		end,
+	}
+	local catalog = {
+		getChildCollections = function()
+			return {
+				{
+					getName = function()
+						return "Top Level"
+					end,
+					isSmartCollection = function()
+						return true
+					end,
+				},
+			}
+		end,
+		getChildCollectionSets = function()
+			return { nestedSet }
+		end,
+	}
+
+	local matching = Catalog.getMatchingSmartCollections(catalog, "")
+	assertEqual(#matching, 2)
+end
+
+function tests.catalog_photos_from_smart_collections_dedup()
+	local collections = {
+		{
+			getPhotos = function()
+				return {
+					{ localIdentifier = "photo-1" },
+					{ localIdentifier = "photo-2" },
+				}
+			end,
+		},
+		{
+			getPhotos = function()
+				return {
+					{ localIdentifier = "photo-2" },
+					{ localIdentifier = "photo-3" },
+				}
+			end,
+		},
+	}
+
+	local photos = Catalog.photosFromSmartCollections(nil, collections)
+	assertEqual(#photos, 3)
+	assertEqual(photos[1].localIdentifier, "photo-1")
+	assertEqual(photos[2].localIdentifier, "photo-2")
+	assertEqual(photos[3].localIdentifier, "photo-3")
+end
+
+function tests.catalog_photos_from_smart_collections_no_catalog()
+	local photos = Catalog.photosFromSmartCollections(nil, {})
+	assertEqual(#photos, 0)
+end
+
+function tests.catalog_union_photo_lists_dedup()
+	local list1 = {
+		{ localIdentifier = "a" },
+		{ localIdentifier = "b" },
+	}
+	local list2 = {
+		{ localIdentifier = "b" },
+		{ localIdentifier = "c" },
+	}
+
+	local unioned = Catalog.unionPhotoLists(list1, list2)
+	assertEqual(#unioned, 3)
+	assertEqual(unioned[1].localIdentifier, "a")
+	assertEqual(unioned[2].localIdentifier, "b")
+	assertEqual(unioned[3].localIdentifier, "c")
+end
+
+function tests.catalog_union_photo_lists_empty_first()
+	local list1 = {}
+	local list2 = { { localIdentifier = "a" } }
+	local unioned = Catalog.unionPhotoLists(list1, list2)
+	assertEqual(#unioned, 1)
+end
+
+function tests.catalog_union_photo_lists_empty_second()
+	local list1 = { { localIdentifier = "a" } }
+	local list2 = {}
+	local unioned = Catalog.unionPhotoLists(list1, list2)
+	assertEqual(#unioned, 1)
+end
+
+function tests.catalog_union_photo_lists_both_empty()
+	assertEqual(#Catalog.unionPhotoLists({}, {}), 0)
+end
+
+function tests.config_can_sync_with_smart_collection_filter()
+	assertEqual(
+		Config.canSync({
+			outputDirectory = "/out",
+			minRating = 0,
+			includeUnstarred = false,
+			smartCollectionFilter = "Vacation",
+		}),
+		true
+	)
+end
+
+function tests.config_can_sync_rejects_smart_collection_filter_without_output()
+	assertEqual(
+		Config.canSync({
+			outputDirectory = "",
+			minRating = 0,
+			includeUnstarred = false,
+			smartCollectionFilter = "Vacation",
+		}),
+		false
+	)
+end
+
+function tests.config_can_sync_rejects_smart_collection_filter_with_empty_string()
+	assertEqual(
+		Config.canSync({
+			outputDirectory = "/out",
+			minRating = 0,
+			includeUnstarred = false,
+			smartCollectionFilter = "",
+		}),
+		false
+	)
+end
+
+function tests.config_rating_summary_smart_collection_only()
+	local summary = Config.ratingSummary({
+		minRating = 0,
+		includeUnstarred = false,
+		smartCollectionFilter = "Vacation",
+		smartCollectionMatchCount = 3,
+	})
+	assertEqual(summary, "Selected: smart collection 'Vacation' (3 matching)")
+end
+
+function tests.config_rating_summary_smart_collection_and_stars()
+	local summary = Config.ratingSummary({
+		minRating = 3,
+		includeUnstarred = false,
+		smartCollectionFilter = "Vacation",
+		smartCollectionMatchCount = 2,
+	})
+	assertEqual(
+		summary,
+		"Selected: 3+ + smart collection 'Vacation' (2 matching)"
+	)
+end
+
+function tests.config_rating_summary_smart_collection_unstarred_and_stars()
+	local summary = Config.ratingSummary({
+		minRating = 3,
+		includeUnstarred = true,
+		smartCollectionFilter = "Edited",
+		smartCollectionMatchCount = 1,
+	})
+	assertEqual(
+		summary,
+		"Selected: unstarred, 3+ + smart collection 'Edited' (1 matching)"
+	)
+end
+
+function tests.config_rating_summary_smart_collection_without_match_count()
+	local summary = Config.ratingSummary({
+		minRating = 0,
+		includeUnstarred = false,
+		smartCollectionFilter = "Vacation",
+	})
+	assertEqual(summary, "Selected: smart collection 'Vacation'")
+end
+
+function tests.config_smart_collection_summary_with_filter()
+	assertEqual(
+		Config.smartCollectionSummary({
+			smartCollectionFilter = "Test",
+		}),
+		"Smart collection filter: 'Test'"
+	)
+end
+
+function tests.config_smart_collection_summary_with_match_count()
+	assertEqual(
+		Config.smartCollectionSummary({
+			smartCollectionFilter = "Test",
+			smartCollectionMatchCount = 4,
+		}),
+		"Smart collection filter: 'Test' (4 matching)"
+	)
+end
+
+function tests.config_smart_collection_summary_no_filter()
+	assertEqual(
+		Config.smartCollectionSummary({
+			smartCollectionFilter = "",
+		}),
+		"Type name to filter by smart collection"
+	)
+end
+
+function tests.config_ensure_defaults_smart_collection_filter()
+	local properties = {}
+	Config.ensureDefaults(properties)
+	assertEqual(properties.smartCollectionFilter, "")
+end
+
+function tests.config_loads_preferences_into_properties_with_smart_collection()
+	local prefs = {
+		outputDirectory = "/chosen",
+		minRating = 4,
+		smartCollectionFilter = "Vacation",
+		includeVirtualCopies = true,
+	}
+	local properties = {}
+	Config.loadPreferencesIntoProperties(prefs, properties)
+	assertEqual(properties.smartCollectionFilter, "Vacation")
+end
+
+function tests.scanner_plan_with_smart_collection_mode()
+	local config = {
+		outputDirectory = "/out",
+		minRating = nil,
+		includeUnstarred = false,
+		includeVirtualCopies = false,
+		smartCollectionFilter = "Test",
+		exportSettingsVersion = 1,
+	}
+	local state = State.empty()
+	local planned = Scanner.plan(
+		{
+			{
+				identifier = "a",
+				fileName = "a.jpg",
+				rating = 5,
+				isRejected = false,
+				isVirtualCopy = false,
+			},
+			{
+				identifier = "b",
+				fileName = "b.jpg",
+				rating = 1,
+				isRejected = false,
+				isVirtualCopy = false,
+			},
+		},
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return false
+		end,
+		nil,
+		{ trustedCatalogSelection = true }
+	)
+
+	assertEqual(#planned.exports, 2)
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 2, selected = 2, skipped = 0, orphaned = 0, ignored = 0 }
+	)
 end
 
 local names = {}

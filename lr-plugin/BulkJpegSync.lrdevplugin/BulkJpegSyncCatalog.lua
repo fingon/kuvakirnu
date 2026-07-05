@@ -99,6 +99,110 @@ function Catalog.batchMetadata(catalog, photos)
 	}
 end
 
+local function photoIdentifier(photo)
+	if type(photo) == "table" and photo.localIdentifier then
+		return tostring(photo.localIdentifier)
+	end
+	if type(photo) == "table" and photo.id then
+		return tostring(photo.id)
+	end
+	return tostring(photo)
+end
+
+local function collectSmartCollections(source)
+	local result = {}
+
+	local collections = source:getChildCollections() or {}
+	for _, item in ipairs(collections) do
+		if item.isSmartCollection and item:isSmartCollection() then
+			result[#result + 1] = item
+		end
+	end
+
+	local sets = source:getChildCollectionSets() or {}
+	for _, set in ipairs(sets) do
+		local nested = collectSmartCollections(set)
+		for _, n in ipairs(nested) do
+			result[#result + 1] = n
+		end
+	end
+
+	return result
+end
+
+function Catalog.getMatchingSmartCollections(catalog, nameSubstring)
+	if not catalog then
+		return {}
+	end
+
+	local all = collectSmartCollections(catalog)
+	if nameSubstring == nil or nameSubstring == "" then
+		return all
+	end
+
+	local matching = {}
+	for _, sc in ipairs(all) do
+		local name = sc:getName() or ""
+		if name:find(nameSubstring, 1, true) then
+			matching[#matching + 1] = sc
+		end
+	end
+
+	return matching
+end
+
+function Catalog.photosFromSmartCollections(catalog, smartCollections)
+	if not smartCollections then
+		return {}
+	end
+
+	local seen = {}
+	local photos = {}
+	for _, sc in ipairs(smartCollections) do
+		local collectionPhotos = sc:getPhotos() or {}
+		for _, photo in ipairs(collectionPhotos) do
+			local id = photoIdentifier(photo)
+			if not seen[id] then
+				seen[id] = true
+				photos[#photos + 1] = photo
+			end
+		end
+	end
+
+	return photos
+end
+
+function Catalog.findBySmartCollectionFilter(catalog, nameSubstring)
+	local matching = Catalog.getMatchingSmartCollections(catalog, nameSubstring)
+	return Catalog.photosFromSmartCollections(catalog, matching)
+end
+
+function Catalog.unionPhotoLists(list1, list2)
+	if #list1 == 0 then
+		return list2
+	end
+	if #list2 == 0 then
+		return list1
+	end
+
+	local seen = {}
+	local result = {}
+	for _, photo in ipairs(list1) do
+		local id = photoIdentifier(photo)
+		seen[id] = true
+		result[#result + 1] = photo
+	end
+	for _, photo in ipairs(list2) do
+		local id = photoIdentifier(photo)
+		if not seen[id] then
+			seen[id] = true
+			result[#result + 1] = photo
+		end
+	end
+
+	return result
+end
+
 function Catalog.rawMetadataKeys()
 	return rawMetadataKeys
 end

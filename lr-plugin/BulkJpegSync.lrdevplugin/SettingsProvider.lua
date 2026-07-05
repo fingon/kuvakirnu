@@ -1,9 +1,12 @@
+local LrApplication = import("LrApplication")
 local LrDialogs = import("LrDialogs")
 local LrFunctionContext = import("LrFunctionContext")
 local LrPathUtils = import("LrPathUtils")
 local LrPrefs = import("LrPrefs")
+local LrTasks = import("LrTasks")
 local LrView = import("LrView")
 
+local Catalog = require("BulkJpegSyncCatalog")
 local Config = require("BulkJpegSyncConfig")
 local SyncLauncher = require("BulkJpegSyncSyncLauncher")
 
@@ -74,8 +77,6 @@ local function observePreferences(context, properties)
 	observeProperty(context, properties, "includeUnstarred")
 	observeProperty(context, properties, "minRating")
 	observeProperty(context, properties, "includeVirtualCopies")
-	observeProperty(context, properties, "longEdgePixels")
-	observeProperty(context, properties, "jpegQuality")
 end
 
 local function sectionsForTopOfDialog(viewFactory, properties)
@@ -182,6 +183,62 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 						value = bind("includeVirtualCopies"),
 					}),
 				}),
+				viewFactory:row({
+					spacing = viewFactory:control_spacing(),
+					viewFactory:static_text({
+						title = "",
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:static_text({
+						title = "── in addition ──",
+						fill_horizontal = 1,
+					}),
+				}),
+				viewFactory:row({
+					spacing = viewFactory:control_spacing(),
+					viewFactory:static_text({
+						title = "+ by smart collection",
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:edit_field({
+						value = bind("smartCollectionFilter"),
+						width_in_chars = 24,
+						immediate = true,
+						validate = function(view, value)
+							properties.smartCollectionFilter = value
+							saveProperties(properties)
+							if value ~= nil and value ~= "" then
+								LrTasks.startAsyncTask(function()
+									local catalog =
+										LrApplication.activeCatalog()
+									local matching =
+										Catalog.getMatchingSmartCollections(
+											catalog,
+											value
+										)
+									properties.smartCollectionMatchCount =
+										#matching
+									refreshDerivedProperties(properties)
+								end)
+							else
+								properties.smartCollectionMatchCount = nil
+								refreshDerivedProperties(properties)
+							end
+							return true, value
+						end,
+					}),
+				}),
+				viewFactory:row({
+					spacing = viewFactory:control_spacing(),
+					viewFactory:static_text({
+						title = "",
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:static_text({
+						title = bind("smartCollectionSummary"),
+						fill_horizontal = 1,
+					}),
+				}),
 			}),
 		},
 		{
@@ -199,6 +256,16 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 						value = bind("longEdgePixels"),
 						width_in_digits = 5,
 						immediate = true,
+						validate = function(view, value)
+							properties.longEdgePixels = value
+							saveProperties(properties)
+							refreshDerivedProperties(properties)
+							return true, value
+						end,
+						action = function()
+							saveProperties(properties)
+							refreshDerivedProperties(properties)
+						end,
 					}),
 				}),
 				viewFactory:row({
@@ -211,6 +278,16 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 						value = bind("jpegQuality"),
 						width_in_digits = 3,
 						immediate = true,
+						validate = function(view, value)
+							properties.jpegQuality = value
+							saveProperties(properties)
+							refreshDerivedProperties(properties)
+							return true, value
+						end,
+						action = function()
+							saveProperties(properties)
+							refreshDerivedProperties(properties)
+						end,
 					}),
 				}),
 			}),
@@ -328,6 +405,18 @@ return {
 					propertyTable
 				)
 				observePreferences(context, propertyTable)
+				local initFilter = propertyTable.smartCollectionFilter or ""
+				if initFilter ~= "" then
+					LrTasks.startAsyncTask(function()
+						local catalog = LrApplication.activeCatalog()
+						local matching = Catalog.getMatchingSmartCollections(
+							catalog,
+							initFilter
+						)
+						propertyTable.smartCollectionMatchCount = #matching
+						Config.refreshDerivedProperties(propertyTable)
+					end)
+				end
 				return sectionsForTopOfDialog(viewFactory, propertyTable)
 			end
 		)

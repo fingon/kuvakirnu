@@ -29,3 +29,11 @@ issue.
   stable derivative path correctly.
 - Confirm re-running a sync skips unchanged files and replaces changed
   derivatives in place.
+- Confirm smart collection filter field persists across Lightroom restarts.
+- Confirm the live smart collection matching count updates as the filter text
+  changes.
+- Confirm the smart collection filter unions with star-rating selection (photos
+  matching either source are included).
+- Confirm the "in addition" UI label makes the additive nature clear.
+- Confirm the star-rating and smart collection filters work independently and
+  together.

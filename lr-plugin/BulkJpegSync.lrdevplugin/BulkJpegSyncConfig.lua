@@ -10,6 +10,7 @@ Config.defaultLongEdgePixels = 3200
 Config.defaultJpegQuality = 85
 Config.defaultIncludeUnstarred = false
 Config.defaultIncludeVirtualCopies = false
+Config.defaultSmartCollectionFilter = ""
 Config.preferenceKeys = {
 	"outputDirectory",
 	"minRating",
@@ -17,6 +18,7 @@ Config.preferenceKeys = {
 	"jpegQuality",
 	"includeUnstarred",
 	"includeVirtualCopies",
+	"smartCollectionFilter",
 	"lastRunAt",
 	"lastRunResults",
 	"lastRunCleanup",
@@ -110,6 +112,9 @@ function Config.ensureDefaults(properties)
 		properties.includeVirtualCopies,
 		Config.defaultIncludeVirtualCopies
 	)
+	if blank(properties.smartCollectionFilter) then
+		properties.smartCollectionFilter = Config.defaultSmartCollectionFilter
+	end
 	if properties.lastRunAt == nil then
 		properties.lastRunAt = "Never"
 	end
@@ -134,6 +139,8 @@ function Config.refreshDerivedProperties(properties)
 		properties.outputDirectoryDisplay = properties.outputDirectory
 	end
 	properties.ratingSummary = Config.ratingSummary(properties)
+	properties.smartCollectionSummary =
+		Config.smartCollectionSummary(properties)
 	properties.canSync = Config.canSync(properties)
 	properties.syncAvailabilitySummary =
 		Config.syncAvailabilitySummary(properties)
@@ -238,18 +245,58 @@ end
 function Config.ratingSummary(properties)
 	local minRating = tonumber(properties.minRating) or noStarThreshold
 	local includeUnstarred = properties.includeUnstarred == true
+	local hasSmartCollection = not blank(properties.smartCollectionFilter)
 
+	local starParts = {}
 	if minRating == noStarThreshold and includeUnstarred then
-		return "Selected: unstarred only"
+		starParts[#starParts + 1] = "unstarred only"
+	elseif minRating ~= noStarThreshold then
+		if includeUnstarred then
+			starParts[#starParts + 1] = "unstarred"
+		end
+		starParts[#starParts + 1] = tostring(minRating) .. "+"
 	end
-	if minRating == noStarThreshold then
+
+	local parts = {}
+	if #starParts > 0 then
+		parts[#parts + 1] = table.concat(starParts, ", ")
+	end
+	if hasSmartCollection then
+		local matchCount = properties.smartCollectionMatchCount
+		if matchCount then
+			parts[#parts + 1] = "smart collection '"
+				.. properties.smartCollectionFilter
+				.. "' ("
+				.. tostring(matchCount)
+				.. " matching)"
+		else
+			parts[#parts + 1] = "smart collection '"
+				.. properties.smartCollectionFilter
+				.. "'"
+		end
+	end
+
+	if #parts == 0 then
 		return "Selected: none"
 	end
-	if includeUnstarred then
-		return "Selected: unstarred, " .. tostring(minRating) .. "+"
-	end
 
-	return "Selected: " .. tostring(minRating) .. "+"
+	return "Selected: " .. table.concat(parts, " + ")
+end
+
+function Config.smartCollectionSummary(properties)
+	local filter = properties.smartCollectionFilter or ""
+	local matchCount = properties.smartCollectionMatchCount
+	if filter == "" then
+		return "Type name to filter by smart collection"
+	end
+	if matchCount == nil then
+		return "Smart collection filter: '" .. filter .. "'"
+	end
+	return "Smart collection filter: '"
+		.. filter
+		.. "' ("
+		.. tostring(matchCount)
+		.. " matching)"
 end
 
 function Config.canSync(properties)
@@ -262,8 +309,10 @@ function Config.canSync(properties)
 	end
 
 	local minRating = tonumber(properties.minRating) or noStarThreshold
-	return properties.includeUnstarred == true
+	local hasStarConfig = properties.includeUnstarred == true
 		or (minRating >= 1 and minRating <= 5)
+	local hasSmartCollectionConfig = not blank(properties.smartCollectionFilter)
+	return hasStarConfig or hasSmartCollectionConfig
 end
 
 function Config.syncAvailabilitySummary(properties)
@@ -277,7 +326,7 @@ function Config.syncAvailabilitySummary(properties)
 		return "Select an output folder."
 	end
 
-	return "Select unstarred or a star threshold."
+	return "Select unstarred, a star threshold, or a smart collection filter."
 end
 
 function Config.outputSettingsFingerprint(config)
@@ -322,6 +371,7 @@ function Config.fromProperties(properties)
 		outputDirectory = properties.outputDirectory,
 		includeUnstarred = properties.includeUnstarred == true,
 		includeVirtualCopies = properties.includeVirtualCopies == true,
+		smartCollectionFilter = properties.smartCollectionFilter or "",
 		longEdgePixels = longEdgePixels,
 		jpegQuality = jpegQuality,
 		exportSettingsVersion = Config.exportSettingsVersion,

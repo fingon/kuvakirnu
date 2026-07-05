@@ -37,9 +37,10 @@ building this plugin.
 - Configurable export modes beyond rating threshold:
   - all catalog photos matching rules
   - keyword-based curated exports
-  - collection-based curated exports
   - edited-only exports
   - source-folder and date-range filters
+- Option to use smart collection filter with OR logic vs. the current union with star rating.
+- Support for regular (non-smart) collections.
 - Orphan review UI with archive, delete, and keep actions.
 - Video derivative support.
 - Live Photo pairing support.

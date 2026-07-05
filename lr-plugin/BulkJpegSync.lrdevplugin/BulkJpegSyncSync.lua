@@ -163,6 +163,7 @@ function Sync.run(activeProperties)
 		min_rating = config.minRating or 0,
 		include_unstarred = config.includeUnstarred,
 		include_virtual_copies = config.includeVirtualCopies,
+		smart_collection_filter = config.smartCollectionFilter,
 		long_edge_pixels = config.longEdgePixels,
 		jpeg_quality = config.jpegQuality,
 	})
@@ -188,15 +189,30 @@ function Sync.run(activeProperties)
 		searchProgressDone
 	)
 	local catalog = LrApplication.activeCatalog()
-	local photos, photosErr = Catalog.findCandidates(catalog, config)
-	if not photos then
-		finish(progressScope)
-		return nil, photosErr
+	local photos = {}
+	if config.minRating ~= nil or config.includeUnstarred then
+		local ratingPhotos, photosErr = Catalog.findCandidates(catalog, config)
+		if not ratingPhotos then
+			finish(progressScope)
+			return nil, photosErr
+		end
+		photos = ratingPhotos
+	end
+	if
+		config.smartCollectionFilter ~= nil
+		and config.smartCollectionFilter ~= ""
+	then
+		local scPhotos = Catalog.findBySmartCollectionFilter(
+			catalog,
+			config.smartCollectionFilter
+		)
+		photos = Catalog.unionPhotoLists(photos, scPhotos)
 	end
 	Logger.info("catalog_search_completed", {
 		candidates = #photos,
 		min_rating = config.minRating or 0,
 		include_unstarred = config.includeUnstarred,
+		smart_collection_filter = config.smartCollectionFilter,
 	})
 	if canceled(progressScope) then
 		finish(progressScope)
