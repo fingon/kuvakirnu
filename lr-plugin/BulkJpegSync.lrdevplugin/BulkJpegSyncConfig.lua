@@ -174,7 +174,7 @@ function Config.lastRunDiagnostic(
 	failedCount
 )
 	return string.format(
-		"%s candidates=%d selected=%d exported=%d skipped=%d orphaned=%d deleted=%d failed=%d ignored=%d metadata_missing=%d metadata_mismatched=%d capture_date_missing=%d",
+		"%s candidates=%d selected=%d exported=%d skipped=%d orphaned=%d deleted=%d failed=%d ignored=%d videos_skipped=%d metadata_missing=%d metadata_mismatched=%d capture_date_missing=%d",
 		timestamp,
 		stats.candidates,
 		stats.selected,
@@ -184,6 +184,7 @@ function Config.lastRunDiagnostic(
 		deletedCount,
 		failedCount,
 		stats.ignored,
+		stats.videosSkipped or 0,
 		stats.metadataMissing or 0,
 		stats.metadataMismatched or 0,
 		stats.captureDateMissing or 0

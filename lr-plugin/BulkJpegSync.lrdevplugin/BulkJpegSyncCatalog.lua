@@ -7,6 +7,7 @@ local rawMetadataKeys = {
 	"rating",
 	"pickStatus",
 	"isVirtualCopy",
+	"fileFormat",
 	"dateTimeOriginalISO8601",
 	"dateTimeISO8601",
 	"dateTimeDigitizedISO8601",

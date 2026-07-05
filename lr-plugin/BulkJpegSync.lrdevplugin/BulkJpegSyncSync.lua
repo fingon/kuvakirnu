@@ -142,6 +142,7 @@ local function updateLastRun(
 		metadata_missing = stats.metadataMissing or 0,
 		metadata_mismatched = stats.metadataMismatched or 0,
 		capture_date_missing = stats.captureDateMissing or 0,
+		videos_skipped = stats.videosSkipped or 0,
 	})
 end
 
@@ -271,6 +272,7 @@ function Sync.run(activeProperties)
 		metadata_missing = plan.stats.metadataMissing or 0,
 		metadata_mismatched = plan.stats.metadataMismatched or 0,
 		capture_date_missing = plan.stats.captureDateMissing or 0,
+		videos_skipped = plan.stats.videosSkipped or 0,
 	})
 	local exportedCount = 0
 	local failedCount = 0

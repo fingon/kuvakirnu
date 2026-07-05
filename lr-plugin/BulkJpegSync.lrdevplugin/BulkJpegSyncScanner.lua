@@ -31,6 +31,9 @@ local function canceled(progressScope)
 end
 
 function Scanner.matches(photo, config)
+	if photo.isVideo then
+		return false
+	end
 	if photo.isVirtualCopy and not config.includeVirtualCopies then
 		return false
 	end
@@ -61,6 +64,9 @@ local function metadataMismatch(photo, config)
 end
 
 local function selected(photo, config, options)
+	if photo.isVideo then
+		return false
+	end
 	if options and options[trustedCatalogSelection] then
 		if photo.isVirtualCopy and not config.includeVirtualCopies then
 			return false
@@ -146,6 +152,7 @@ function Scanner.plan(
 		skipped = 0,
 		orphaned = 0,
 		ignored = 0,
+		videosSkipped = 0,
 		metadataMissing = 0,
 		metadataMismatched = 0,
 		captureDateMissing = 0,
@@ -206,6 +213,8 @@ function Scanner.plan(
 				record = record,
 			}
 			stats.orphaned = stats.orphaned + 1
+		elseif photo.isVideo then
+			stats.videosSkipped = stats.videosSkipped + 1
 		else
 			stats.ignored = stats.ignored + 1
 		end
