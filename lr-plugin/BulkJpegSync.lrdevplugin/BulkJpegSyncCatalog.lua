@@ -58,21 +58,57 @@ local function ratingSearch(config)
 	return union
 end
 
-function Catalog.searchDescription(config)
+local function touchTimeCriterion(operation, value)
 	return {
+		criteria = "touchTime",
+		operation = operation,
+		value = value,
+	}
+end
+
+local function touchTimeRangeCriterion(startSec, endSec)
+	return {
+		criteria = "touchTime",
+		operation = "in",
+		value = os.date("!%Y-%m-%d", startSec),
+		value2 = os.date("!%Y-%m-%d", endSec),
+	}
+end
+
+function Catalog.searchDescription(config, options)
+	local description = {
 		combine = "intersect",
 		nonRejectedCriterion(),
 		ratingSearch(config),
 	}
+	options = options or {}
+	if options.editedAfterSec and options.editedBeforeSec then
+		description[#description + 1] = touchTimeRangeCriterion(
+			options.editedAfterSec,
+			options.editedBeforeSec
+		)
+	elseif options.editedAfterSec then
+		description[#description + 1] = touchTimeCriterion(
+			">",
+			os.date("!%Y-%m-%d", options.editedAfterSec)
+		)
+	elseif options.editedBeforeSec then
+		description[#description + 1] = touchTimeCriterion(
+			"<",
+			os.date("!%Y-%m-%d", options.editedBeforeSec)
+		)
+	end
+
+	return description
 end
 
-function Catalog.findCandidates(catalog, config)
+function Catalog.findCandidates(catalog, config, options)
 	if not catalog or not catalog.findPhotos then
 		return nil, "Lightroom catalog search is unavailable"
 	end
 
 	local photos = catalog:findPhotos({
-		searchDesc = Catalog.searchDescription(config),
+		searchDesc = Catalog.searchDescription(config, options),
 	})
 
 	return photos or {}

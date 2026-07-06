@@ -11,6 +11,13 @@ Config.defaultJpegQuality = 85
 Config.defaultIncludeUnstarred = false
 Config.defaultIncludeVirtualCopies = false
 Config.defaultSmartCollectionFilter = ""
+Config.backgroundSyncNever = "never"
+Config.backgroundSyncHourly = "hourly"
+Config.backgroundSyncDaily = "daily"
+Config.defaultBackgroundSyncInterval = Config.backgroundSyncNever
+Config.backgroundSyncHourlySec = 60 * 60
+Config.backgroundSyncDailySec = 24 * 60 * 60
+Config.incrementalEditCooldownSec = 5 * 60
 Config.preferenceKeys = {
 	"outputDirectory",
 	"minRating",
@@ -19,6 +26,10 @@ Config.preferenceKeys = {
 	"includeUnstarred",
 	"includeVirtualCopies",
 	"smartCollectionFilter",
+	"backgroundSyncInterval",
+	"lastSuccessfulSyncStartedAtSec",
+	"lastBackgroundAttemptAtSec",
+	"lastBackgroundFullSyncAtSec",
 	"lastRunAt",
 	"lastRunResults",
 	"lastRunCleanup",
@@ -40,6 +51,27 @@ local function normalizeBoolean(value, defaultValue)
 	end
 
 	return defaultValue
+end
+
+local function normalizeBackgroundSyncInterval(value)
+	if
+		value == Config.backgroundSyncHourly
+		or value == Config.backgroundSyncDaily
+		or value == Config.backgroundSyncNever
+	then
+		return value
+	end
+
+	return Config.defaultBackgroundSyncInterval
+end
+
+local function normalizeNumber(value, defaultValue)
+	local number = tonumber(value)
+	if number == nil then
+		return defaultValue
+	end
+
+	return number
 end
 
 local function maybeImport(name)
@@ -115,6 +147,14 @@ function Config.ensureDefaults(properties)
 	if blank(properties.smartCollectionFilter) then
 		properties.smartCollectionFilter = Config.defaultSmartCollectionFilter
 	end
+	properties.backgroundSyncInterval =
+		normalizeBackgroundSyncInterval(properties.backgroundSyncInterval)
+	properties.lastSuccessfulSyncStartedAtSec =
+		normalizeNumber(properties.lastSuccessfulSyncStartedAtSec, 0)
+	properties.lastBackgroundAttemptAtSec =
+		normalizeNumber(properties.lastBackgroundAttemptAtSec, 0)
+	properties.lastBackgroundFullSyncAtSec =
+		normalizeNumber(properties.lastBackgroundFullSyncAtSec, 0)
 	if properties.lastRunAt == nil then
 		properties.lastRunAt = "Never"
 	end
@@ -144,6 +184,8 @@ function Config.refreshDerivedProperties(properties)
 	properties.canSync = Config.canSync(properties)
 	properties.syncAvailabilitySummary =
 		Config.syncAvailabilitySummary(properties)
+	properties.backgroundSyncSummary =
+		Config.backgroundSyncSummary(properties.backgroundSyncInterval)
 	properties.logFilePath = Config.logFilePath()
 end
 
@@ -194,12 +236,14 @@ end
 function Config.updateLastRunProperties(
 	properties,
 	timestamp,
+	startedAtSec,
 	stats,
 	exportedCount,
 	deletedCount,
 	failedCount
 )
 	properties.lastRunAt = timestamp
+	properties.lastSuccessfulSyncStartedAtSec = startedAtSec
 	properties.lastRunResults = Config.lastRunResults(stats, exportedCount)
 	properties.lastRunCleanup =
 		Config.lastRunCleanup(stats, deletedCount, failedCount)
@@ -282,6 +326,30 @@ function Config.ratingSummary(properties)
 	end
 
 	return "Selected: " .. table.concat(parts, " + ")
+end
+
+function Config.backgroundSyncSummary(interval)
+	interval = normalizeBackgroundSyncInterval(interval)
+	if interval == Config.backgroundSyncHourly then
+		return "Background sync: every hour"
+	end
+	if interval == Config.backgroundSyncDaily then
+		return "Background sync: every day"
+	end
+
+	return "Background sync: never"
+end
+
+function Config.backgroundSyncIntervalSec(interval)
+	interval = normalizeBackgroundSyncInterval(interval)
+	if interval == Config.backgroundSyncHourly then
+		return Config.backgroundSyncHourlySec
+	end
+	if interval == Config.backgroundSyncDaily then
+		return Config.backgroundSyncDailySec
+	end
+
+	return nil
 end
 
 function Config.smartCollectionSummary(properties)

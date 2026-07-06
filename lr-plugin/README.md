@@ -24,6 +24,12 @@ The same command is also available from `File > Plug-in Extras` and as `Sync
 Now` in the plugin settings panel. The plugin exports matching photos into the
 configured output directory.
 
+Use `Sync Changes` in the plugin settings panel for a faster incremental sync.
+It exports recent Lightroom edits after the previous successful sync, ignoring
+edits from the last five minutes so Lightroom has time to settle metadata. It
+does not delete derivatives for removed files or photos that stopped matching;
+use `Sync Now` for cleanup.
+
 Sync shows Lightroom progress captions while loading state, searching the
 catalog, planning JPEGs, deleting orphaned files, exporting, and saving state.
 Canceling the progress dialog stops before later phases when possible.
@@ -53,6 +59,9 @@ Canceling the progress dialog stops before later phases when possible.
 - Shows compact last-run status in the Plug-in Manager and stores a full
   diagnostic string in plugin preferences and the Lightroom plugin log.
 - Prevents concurrent manual sync runs while a run is already active.
+- Can run background sync every hour or every day. The default is never.
+- Background hourly sync exports recent changes and performs at most one full
+  cleanup pass per day. Background daily sync performs a full cleanup pass.
 
 ## Settings
 
@@ -66,8 +75,11 @@ Configure the plugin in Lightroom Classic Plug-in Manager:
 - Virtual copy inclusion toggle, default off.
 - JPEG long edge, default `3200`.
 - JPEG quality, default `85`.
+- Background sync interval, default `Never`.
 - `Sync Now`, enabled when an output folder and at least one rating selection
-  are configured.
+  are configured. This is the full cleanup sync.
+- `Sync Changes`, enabled with the same configuration. This is incremental and
+  does not detect deletions.
 
 ## Development
 
@@ -100,7 +112,6 @@ exceed the source dimensions; the configured long edge is an upper bound.
 
 ## Known MVP limits
 
-- No background interval sync.
 - No video or Live Photo support.
 - No bidirectional metadata sync.
 - No orphan review UI before automatic deletion.

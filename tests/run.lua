@@ -2,6 +2,7 @@ package.path = "lr-plugin/BulkJpegSync.lrdevplugin/?.lua;tests/?.lua;"
 	.. package.path
 
 local Catalog = require("BulkJpegSyncCatalog")
+local Background = require("BulkJpegSyncBackground")
 local Config = require("BulkJpegSyncConfig")
 local Exporter = require("BulkJpegSyncExporter")
 local FileUtils = require("BulkJpegSyncFileUtils")
@@ -234,6 +235,40 @@ function tests.catalog_find_candidates_uses_find_photos()
 	assertEqual(photos[1], "photo")
 	assertEqual(received[2].criteria, "rating")
 	assertEqual(received[2].value, 5)
+end
+
+function tests.catalog_search_description_adds_touch_time_window()
+	local desc = Catalog.searchDescription(
+		{ minRating = 4, includeUnstarred = false },
+		{ editedAfterSec = 100, editedBeforeSec = 200 }
+	)
+
+	assertEqual(desc[3].criteria, "touchTime")
+	assertEqual(desc[3].operation, "in")
+	assertEqual(desc[3].value, "1970-01-01")
+	assertEqual(desc[3].value2, "1970-01-01")
+end
+
+function tests.catalog_find_candidates_passes_incremental_options()
+	local received = nil
+	local catalog = {
+		findPhotos = function(_, params)
+			received = params.searchDesc
+			return { "photo" }
+		end,
+	}
+
+	local photos, err = Catalog.findCandidates(
+		catalog,
+		{ minRating = 5, includeUnstarred = false },
+		{ editedAfterSec = 10, editedBeforeSec = 20 }
+	)
+
+	assertTrue(photos, err)
+	assertEqual(received[3].criteria, "touchTime")
+	assertEqual(received[3].operation, "in")
+	assertEqual(received[3].value, "1970-01-01")
+	assertEqual(received[3].value2, "1970-01-01")
 end
 
 function tests.catalog_batch_metadata_uses_documented_key_sets()
@@ -1130,6 +1165,35 @@ function tests.scanner_marks_exported_records_absent_from_candidates_as_orphans(
 	)
 end
 
+function tests.scanner_incremental_mode_suppresses_absent_candidate_orphans()
+	local config = syncConfig()
+	local state = State.empty()
+	state.photos.absent = {
+		outputPath = "/out/absent.jpg",
+		status = "exported",
+		fingerprint = "old",
+		exportSettingsVersion = 1,
+	}
+
+	local planned = Scanner.plan(
+		{},
+		state,
+		config,
+		Path.derivativePath,
+		function()
+			return true
+		end,
+		nil,
+		{ skipAbsentOrphans = true }
+	)
+
+	assertEqual(#planned.orphans, 0)
+	assertPlanStats(
+		planned.stats,
+		{ candidates = 0, selected = 0, skipped = 0, orphaned = 0, ignored = 0 }
+	)
+end
+
 function tests.scanner_stats_count_selected_exports_without_skipping()
 	local config = {
 		outputDirectory = "/out",
@@ -1299,6 +1363,10 @@ function tests.config_defaults_are_visible()
 	assertEqual(properties.jpegQuality, 85)
 	assertEqual(properties.includeUnstarred, false)
 	assertEqual(properties.includeVirtualCopies, false)
+	assertEqual(properties.backgroundSyncInterval, "never")
+	assertEqual(properties.lastSuccessfulSyncStartedAtSec, 0)
+	assertEqual(properties.lastBackgroundAttemptAtSec, 0)
+	assertEqual(properties.lastBackgroundFullSyncAtSec, 0)
 	assertEqual(properties.lastRunAt, "Never")
 	assertEqual(properties.lastRunResults, "Not run")
 	assertEqual(properties.lastRunCleanup, "Not run")
@@ -1312,6 +1380,10 @@ function tests.config_defaults_repair_blank_persisted_values()
 		jpegQuality = "",
 		includeUnstarred = "",
 		includeVirtualCopies = "",
+		backgroundSyncInterval = "bogus",
+		lastSuccessfulSyncStartedAtSec = "",
+		lastBackgroundAttemptAtSec = "",
+		lastBackgroundFullSyncAtSec = "",
 	}
 	Config.ensureDefaults(properties)
 
@@ -1320,6 +1392,112 @@ function tests.config_defaults_repair_blank_persisted_values()
 	assertEqual(properties.jpegQuality, 85)
 	assertEqual(properties.includeUnstarred, false)
 	assertEqual(properties.includeVirtualCopies, false)
+	assertEqual(properties.backgroundSyncInterval, "never")
+	assertEqual(properties.lastSuccessfulSyncStartedAtSec, 0)
+	assertEqual(properties.lastBackgroundAttemptAtSec, 0)
+	assertEqual(properties.lastBackgroundFullSyncAtSec, 0)
+end
+
+function tests.config_background_sync_interval_seconds()
+	assertNil(Config.backgroundSyncIntervalSec("never"))
+	assertEqual(Config.backgroundSyncIntervalSec("hourly"), 60 * 60)
+	assertEqual(Config.backgroundSyncIntervalSec("daily"), 24 * 60 * 60)
+	assertNil(Config.backgroundSyncIntervalSec("bogus"))
+end
+
+function tests.config_background_sync_summary()
+	assertEqual(Config.backgroundSyncSummary("never"), "Background sync: never")
+	assertEqual(
+		Config.backgroundSyncSummary("hourly"),
+		"Background sync: every hour"
+	)
+	assertEqual(
+		Config.backgroundSyncSummary("daily"),
+		"Background sync: every day"
+	)
+end
+
+function tests.background_policy_disabled_when_never()
+	local mode, reason = Background.nextMode({
+		outputDirectory = "/out",
+		minRating = 3,
+		includeUnstarred = false,
+		backgroundSyncInterval = "never",
+	}, 1000)
+
+	assertNil(mode)
+	assertEqual(reason, "disabled")
+end
+
+function tests.background_policy_waits_for_interval()
+	local mode, reason = Background.nextMode({
+		outputDirectory = "/out",
+		minRating = 3,
+		includeUnstarred = false,
+		backgroundSyncInterval = "hourly",
+		lastBackgroundAttemptAtSec = 900,
+	}, 1000)
+
+	assertNil(mode)
+	assertEqual(reason, "not_due")
+end
+
+function tests.background_policy_first_run_is_full()
+	local mode, reason = Background.nextMode({
+		outputDirectory = "/out",
+		minRating = 3,
+		includeUnstarred = false,
+		backgroundSyncInterval = "hourly",
+		lastBackgroundAttemptAtSec = 0,
+		lastSuccessfulSyncStartedAtSec = 0,
+	}, 4000)
+
+	assertEqual(mode, "full")
+	assertEqual(reason, "initial_full")
+end
+
+function tests.background_policy_hourly_runs_incremental_after_recent_full()
+	local mode, reason = Background.nextMode({
+		outputDirectory = "/out",
+		minRating = 3,
+		includeUnstarred = false,
+		backgroundSyncInterval = "hourly",
+		lastBackgroundAttemptAtSec = 0,
+		lastSuccessfulSyncStartedAtSec = 100,
+		lastBackgroundFullSyncAtSec = 3600,
+	}, 7200)
+
+	assertEqual(mode, "incremental")
+	assertEqual(reason, "hourly_incremental")
+end
+
+function tests.background_policy_hourly_runs_daily_full_cleanup()
+	local mode, reason = Background.nextMode({
+		outputDirectory = "/out",
+		minRating = 3,
+		includeUnstarred = false,
+		backgroundSyncInterval = "hourly",
+		lastBackgroundAttemptAtSec = 0,
+		lastSuccessfulSyncStartedAtSec = 100,
+		lastBackgroundFullSyncAtSec = 100,
+	}, Config.backgroundSyncDailySec + 200)
+
+	assertEqual(mode, "full")
+	assertEqual(reason, "hourly_daily_full")
+end
+
+function tests.background_policy_daily_runs_full()
+	local mode, reason = Background.nextMode({
+		outputDirectory = "/out",
+		minRating = 3,
+		includeUnstarred = false,
+		backgroundSyncInterval = "daily",
+		lastBackgroundAttemptAtSec = 0,
+		lastSuccessfulSyncStartedAtSec = 100,
+	}, Config.backgroundSyncDailySec + 100)
+
+	assertEqual(mode, "full")
+	assertEqual(reason, "daily_full")
 end
 
 function tests.config_export_settings_version_tracks_export_behavior()
@@ -1466,6 +1644,7 @@ function tests.config_updates_last_run_properties()
 	Config.updateLastRunProperties(
 		properties,
 		"2026-07-05T10:11:12Z",
+		12345,
 		stats,
 		1,
 		2,
@@ -1473,6 +1652,7 @@ function tests.config_updates_last_run_properties()
 	)
 
 	assertEqual(properties.lastRunAt, "2026-07-05T10:11:12Z")
+	assertEqual(properties.lastSuccessfulSyncStartedAtSec, 12345)
 	assertEqual(
 		properties.lastRunResults,
 		"candidates 5, selected 4, exported 1, skipped 3"
@@ -1775,6 +1955,10 @@ function tests.config_loads_preferences_into_properties()
 		jpegQuality = 75,
 		includeUnstarred = true,
 		includeVirtualCopies = true,
+		backgroundSyncInterval = "hourly",
+		lastSuccessfulSyncStartedAtSec = 100,
+		lastBackgroundAttemptAtSec = 200,
+		lastBackgroundFullSyncAtSec = 300,
 		lastRunAt = "2026-07-05T10:11:12Z",
 		lastRunResults = "candidates 4",
 		lastRunCleanup = "orphaned 0",
@@ -1790,6 +1974,10 @@ function tests.config_loads_preferences_into_properties()
 	assertEqual(properties.jpegQuality, 75)
 	assertEqual(properties.includeUnstarred, true)
 	assertEqual(properties.includeVirtualCopies, true)
+	assertEqual(properties.backgroundSyncInterval, "hourly")
+	assertEqual(properties.lastSuccessfulSyncStartedAtSec, 100)
+	assertEqual(properties.lastBackgroundAttemptAtSec, 200)
+	assertEqual(properties.lastBackgroundFullSyncAtSec, 300)
 	assertEqual(properties.lastRunAt, "2026-07-05T10:11:12Z")
 	assertEqual(properties.lastRunResults, "candidates 4")
 	assertEqual(properties.lastRunCleanup, "orphaned 0")
@@ -1810,6 +1998,7 @@ function tests.config_loads_empty_preferences_as_defaults()
 	assertEqual(properties.jpegQuality, 85)
 	assertEqual(properties.includeUnstarred, false)
 	assertEqual(properties.includeVirtualCopies, false)
+	assertEqual(properties.backgroundSyncInterval, "never")
 	assertEqual(properties.outputDirectoryDisplay, "Not selected")
 	assertEqual(properties.ratingSummary, "Selected: 3+")
 	assertEqual(properties.lastRunAt, "Never")
@@ -1825,6 +2014,10 @@ function tests.config_saves_properties_to_preferences()
 		jpegQuality = 70,
 		includeUnstarred = true,
 		includeVirtualCopies = false,
+		backgroundSyncInterval = "daily",
+		lastSuccessfulSyncStartedAtSec = 100,
+		lastBackgroundAttemptAtSec = 200,
+		lastBackgroundFullSyncAtSec = 300,
 		lastRunAt = "2026-07-05T10:11:12Z",
 		lastRunResults = "candidates 5",
 		lastRunCleanup = "orphaned 0",
@@ -1842,6 +2035,10 @@ function tests.config_saves_properties_to_preferences()
 	assertEqual(prefs.jpegQuality, 70)
 	assertEqual(prefs.includeUnstarred, true)
 	assertEqual(prefs.includeVirtualCopies, false)
+	assertEqual(prefs.backgroundSyncInterval, "daily")
+	assertEqual(prefs.lastSuccessfulSyncStartedAtSec, 100)
+	assertEqual(prefs.lastBackgroundAttemptAtSec, 200)
+	assertEqual(prefs.lastBackgroundFullSyncAtSec, 300)
 	assertEqual(prefs.lastRunAt, "2026-07-05T10:11:12Z")
 	assertEqual(prefs.lastRunResults, "candidates 5")
 	assertEqual(prefs.lastRunCleanup, "orphaned 0")
@@ -1860,6 +2057,7 @@ function tests.config_saves_normalized_blank_properties()
 		jpegQuality = "",
 		includeUnstarred = "",
 		includeVirtualCopies = "",
+		backgroundSyncInterval = "",
 	}
 	local prefs = {}
 
@@ -1870,6 +2068,7 @@ function tests.config_saves_normalized_blank_properties()
 	assertEqual(prefs.jpegQuality, 85)
 	assertEqual(prefs.includeUnstarred, false)
 	assertEqual(prefs.includeVirtualCopies, false)
+	assertEqual(prefs.backgroundSyncInterval, "never")
 end
 
 function tests.catalog_get_matching_smart_collections()

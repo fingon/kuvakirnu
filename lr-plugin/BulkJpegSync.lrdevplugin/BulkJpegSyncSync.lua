@@ -19,6 +19,9 @@ local Sync = {}
 local running = false
 local syncCanceledMessage = "sync canceled"
 local trustedCatalogSelectionOption = "trustedCatalogSelection"
+local skipAbsentOrphansOption = "skipAbsentOrphans"
+local fullMode = "full"
+local incrementalMode = "incremental"
 local progressTotal = 1000
 local loadProgressDone = 20
 local searchProgressDone = 80
@@ -35,6 +38,54 @@ end
 
 local function now()
 	return os.date("!%Y-%m-%dT%H:%M:%SZ")
+end
+
+local function nowSec()
+	return os.time()
+end
+
+local function lastEditTimeSec(value)
+	if value == nil or value == "" then
+		return nil
+	end
+	local number = tonumber(value)
+	if number then
+		return number
+	end
+
+	local year, month, day, hour, min, sec = tostring(value):match(
+		"^(%d%d%d%d)%-(%d%d)%-(%d%d)T(%d%d):(%d%d):(%d%d)"
+	)
+	if not year then
+		return nil
+	end
+
+	return os.time({
+		year = tonumber(year),
+		month = tonumber(month),
+		day = tonumber(day),
+		hour = tonumber(hour),
+		min = tonumber(min),
+		sec = tonumber(sec),
+	})
+end
+
+local function includeInIncrementalWindow(photo, lowerBoundSec, upperBoundSec)
+	local editedAtSec = lastEditTimeSec(photo.lastEditTime)
+	return editedAtSec ~= nil
+		and editedAtSec > lowerBoundSec
+		and editedAtSec < upperBoundSec
+end
+
+local function filterIncrementalPhotos(photos, lowerBoundSec, upperBoundSec)
+	local filtered = {}
+	for _, photo in ipairs(photos) do
+		if includeInIncrementalWindow(photo, lowerBoundSec, upperBoundSec) then
+			filtered[#filtered + 1] = photo
+		end
+	end
+
+	return filtered
 end
 
 local function canceled(progressScope)
@@ -105,6 +156,7 @@ end
 local function updateLastRun(
 	activeProperties,
 	prefs,
+	startedAtSec,
 	stats,
 	exportedCount,
 	deletedCount,
@@ -114,6 +166,7 @@ local function updateLastRun(
 	Config.updateLastRunProperties(
 		prefs,
 		timestamp,
+		startedAtSec,
 		stats,
 		exportedCount,
 		deletedCount,
@@ -123,6 +176,7 @@ local function updateLastRun(
 		Config.updateLastRunProperties(
 			activeProperties,
 			timestamp,
+			startedAtSec,
 			stats,
 			exportedCount,
 			deletedCount,
@@ -146,11 +200,19 @@ local function updateLastRun(
 	})
 end
 
-function Sync.run(activeProperties)
+function Sync.isRunning()
+	return running
+end
+
+function Sync.run(activeProperties, options)
 	if running then
 		return nil, "sync is already running"
 	end
 	running = true
+	options = options or {}
+	local mode = options.mode or fullMode
+	local incremental = mode == incrementalMode
+	local startedAtSec = options.startedAtSec or nowSec()
 
 	local prefs = LrPrefs.prefsForPlugin()
 	local properties = activeProperties or prefs
@@ -167,6 +229,7 @@ function Sync.run(activeProperties)
 		smart_collection_filter = config.smartCollectionFilter,
 		long_edge_pixels = config.longEdgePixels,
 		jpeg_quality = config.jpegQuality,
+		mode = mode,
 	})
 
 	local progressScope = LrProgressScope({ title = "Bulk JPEG Sync" })
@@ -191,8 +254,21 @@ function Sync.run(activeProperties)
 	)
 	local catalog = LrApplication.activeCatalog()
 	local photos = {}
+	local incrementalLowerBoundSec = tonumber(
+		properties.lastSuccessfulSyncStartedAtSec
+	) or 0
+	local incrementalUpperBoundSec = startedAtSec
+		- Config.incrementalEditCooldownSec
+	local candidateSearchOptions = nil
+	if incremental then
+		candidateSearchOptions = {
+			editedAfterSec = incrementalLowerBoundSec,
+			editedBeforeSec = incrementalUpperBoundSec,
+		}
+	end
 	if config.minRating ~= nil or config.includeUnstarred then
-		local ratingPhotos, photosErr = Catalog.findCandidates(catalog, config)
+		local ratingPhotos, photosErr =
+			Catalog.findCandidates(catalog, config, candidateSearchOptions)
 		if not ratingPhotos then
 			finish(progressScope)
 			return nil, photosErr
@@ -243,9 +319,24 @@ function Sync.run(activeProperties)
 		return nil, syncCanceledMessage
 	end
 
+	local snapshots = snapshotsFromMetadata(photos, metadata)
+	if incremental then
+		snapshots = filterIncrementalPhotos(
+			snapshots,
+			incrementalLowerBoundSec,
+			incrementalUpperBoundSec
+		)
+		Logger.info("incremental_filter_completed", {
+			input = #photos,
+			selected = #snapshots,
+			lower_bound_sec = incrementalLowerBoundSec,
+			upper_bound_sec = incrementalUpperBoundSec,
+		})
+	end
+
 	setProgress(progressScope, "Planning JPEGs", planProgressStart)
 	local plan, planErr = Scanner.plan(
-		snapshotsFromMetadata(photos, metadata),
+		snapshots,
 		state,
 		config,
 		Path.derivativePath,
@@ -256,6 +347,7 @@ function Sync.run(activeProperties)
 			progressStart = planProgressStart,
 			progressEnd = planProgressEnd,
 			progressTotal = progressTotal,
+			[skipAbsentOrphansOption] = incremental,
 		}
 	)
 	if not plan then
@@ -278,53 +370,61 @@ function Sync.run(activeProperties)
 	local failedCount = 0
 	local deletedCount = 0
 
-	setProgress(
-		progressScope,
-		"Deleting orphans 0 of " .. tostring(#plan.orphans),
-		planProgressEnd
-	)
-	for index, orphan in ipairs(plan.orphans) do
-		if canceled(progressScope) then
-			finish(progressScope)
-			Logger.info("sync_canceled", { phase = "deleting_orphans" })
-			return nil, syncCanceledMessage
-		end
+	if incremental then
 		setProgress(
 			progressScope,
-			"Deleting orphan "
-				.. tostring(index)
-				.. " of "
-				.. tostring(#plan.orphans),
-			phaseProgress(
-				planProgressEnd,
-				cleanupProgressEnd,
-				index - 1,
-				#plan.orphans
-			)
+			"Skipping cleanup in incremental sync",
+			cleanupProgressEnd
 		)
-		local outputPath = orphan.record and orphan.record.outputPath
-		local deleteFailed = false
-		if
-			outputPath
-			and outputPath ~= ""
-			and FileUtils.fileExists(outputPath)
-		then
-			local deleted, deleteErr = FileUtils.deleteFile(outputPath)
-			if deleted then
-				deletedCount = deletedCount + 1
-			else
-				deleteFailed = true
-				failedCount = failedCount + 1
-				Logger.error("orphan_delete_failed", {
-					photo = orphan.identifier or "unknown",
-					output = outputPath,
-					error = deleteErr,
-				})
+	else
+		setProgress(
+			progressScope,
+			"Deleting orphans 0 of " .. tostring(#plan.orphans),
+			planProgressEnd
+		)
+		for index, orphan in ipairs(plan.orphans) do
+			if canceled(progressScope) then
+				finish(progressScope)
+				Logger.info("sync_canceled", { phase = "deleting_orphans" })
+				return nil, syncCanceledMessage
 			end
-		end
-		if not deleteFailed then
-			local identifier = orphan.identifier or orphan.photo.identifier
-			State.deleteRecord(state, identifier)
+			setProgress(
+				progressScope,
+				"Deleting orphan "
+					.. tostring(index)
+					.. " of "
+					.. tostring(#plan.orphans),
+				phaseProgress(
+					planProgressEnd,
+					cleanupProgressEnd,
+					index - 1,
+					#plan.orphans
+				)
+			)
+			local outputPath = orphan.record and orphan.record.outputPath
+			local deleteFailed = false
+			if
+				outputPath
+				and outputPath ~= ""
+				and FileUtils.fileExists(outputPath)
+			then
+				local deleted, deleteErr = FileUtils.deleteFile(outputPath)
+				if deleted then
+					deletedCount = deletedCount + 1
+				else
+					deleteFailed = true
+					failedCount = failedCount + 1
+					Logger.error("orphan_delete_failed", {
+						photo = orphan.identifier or "unknown",
+						output = outputPath,
+						error = deleteErr,
+					})
+				end
+			end
+			if not deleteFailed then
+				local identifier = orphan.identifier or orphan.photo.identifier
+				State.deleteRecord(state, identifier)
+			end
 		end
 	end
 	Logger.info("cleanup_completed", {
@@ -428,12 +528,13 @@ function Sync.run(activeProperties)
 	updateLastRun(
 		activeProperties,
 		prefs,
+		startedAtSec,
 		plan.stats,
 		exportedCount,
 		deletedCount,
 		failedCount
 	)
-	if failedCount > 0 then
+	if failedCount > 0 and not options.suppressDialogs then
 		LrDialogs.message(
 			"Bulk JPEG Sync completed with failures",
 			"Some photos failed to export or clean up. Check the Lightroom plugin log and state file.",
@@ -444,6 +545,12 @@ function Sync.run(activeProperties)
 	finish(progressScope)
 
 	return true
+end
+
+function Sync.runIncremental(activeProperties, options)
+	options = options or {}
+	options.mode = incrementalMode
+	return Sync.run(activeProperties, options)
 end
 
 return Sync

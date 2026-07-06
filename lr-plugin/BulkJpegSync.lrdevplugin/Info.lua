@@ -4,6 +4,8 @@ return {
 	LrToolkitIdentifier = "fi.iki.fingon.bulk-jpeg-sync",
 	LrPluginName = "Bulk JPEG Sync",
 	LrPluginInfoProvider = "SettingsProvider.lua",
+	LrInitPlugin = "PluginInit.lua",
+	LrShutdownPlugin = "PluginShutdown.lua",
 	LrLibraryMenuItems = {
 		{
 			title = "Sync JPEGs to Folder",

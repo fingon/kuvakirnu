@@ -3,6 +3,7 @@ local Photo = require("BulkJpegSyncPhoto")
 local Scanner = {}
 local exportedStatus = "exported"
 local trustedCatalogSelection = "trustedCatalogSelection"
+local skipAbsentOrphans = "skipAbsentOrphans"
 
 local function maybeImport(name)
 	if type(import) ~= "function" then
@@ -220,13 +221,15 @@ function Scanner.plan(
 		end
 	end
 
-	for identifier, record in pairs(state.photos) do
-		if record.status == exportedStatus and not seen[identifier] then
-			orphans[#orphans + 1] = {
-				identifier = identifier,
-				record = record,
-			}
-			stats.orphaned = stats.orphaned + 1
+	if not (options and options[skipAbsentOrphans]) then
+		for identifier, record in pairs(state.photos) do
+			if record.status == exportedStatus and not seen[identifier] then
+				orphans[#orphans + 1] = {
+					identifier = identifier,
+					record = record,
+				}
+				stats.orphaned = stats.orphaned + 1
+			end
 		end
 	end
 

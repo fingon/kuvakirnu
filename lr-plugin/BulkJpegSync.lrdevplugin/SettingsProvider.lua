@@ -18,7 +18,12 @@ local function refreshDerivedProperties(properties)
 end
 
 local function saveProperties(properties)
-	Config.savePropertiesToPreferences(properties, LrPrefs.prefsForPlugin())
+	local prefs = LrPrefs.prefsForPlugin()
+	properties.lastSuccessfulSyncStartedAtSec =
+		prefs.lastSuccessfulSyncStartedAtSec
+	properties.lastBackgroundAttemptAtSec = prefs.lastBackgroundAttemptAtSec
+	properties.lastBackgroundFullSyncAtSec = prefs.lastBackgroundFullSyncAtSec
+	Config.savePropertiesToPreferences(properties, prefs)
 end
 
 local function syncNow(properties)
@@ -26,6 +31,14 @@ local function syncNow(properties)
 	refreshDerivedProperties(properties)
 	if properties.canSync then
 		SyncLauncher.runAsync(properties)
+	end
+end
+
+local function syncChanges(properties)
+	saveProperties(properties)
+	refreshDerivedProperties(properties)
+	if properties.canSync then
+		SyncLauncher.runIncrementalAsync(properties)
 	end
 end
 
@@ -77,6 +90,7 @@ local function observePreferences(context, properties)
 	observeProperty(context, properties, "includeUnstarred")
 	observeProperty(context, properties, "minRating")
 	observeProperty(context, properties, "includeVirtualCopies")
+	observeProperty(context, properties, "backgroundSyncInterval")
 end
 
 local function sectionsForTopOfDialog(viewFactory, properties)
@@ -310,9 +324,55 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 							syncNow(properties)
 						end,
 					}),
+					viewFactory:push_button({
+						title = "Sync Changes",
+						enabled = bind("canSync"),
+						action = function()
+							syncChanges(properties)
+						end,
+					}),
 					viewFactory:static_text({
 						title = bind("syncAvailabilitySummary"),
 						fill_horizontal = 1,
+					}),
+				}),
+				viewFactory:row({
+					spacing = viewFactory:control_spacing(),
+					viewFactory:static_text({
+						title = "Background",
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:popup_menu({
+						value = bind("backgroundSyncInterval"),
+						items = {
+							{
+								title = "Never",
+								value = Config.backgroundSyncNever,
+							},
+							{
+								title = "Every hour",
+								value = Config.backgroundSyncHourly,
+							},
+							{
+								title = "Every day",
+								value = Config.backgroundSyncDaily,
+							},
+						},
+					}),
+					viewFactory:static_text({
+						title = bind("backgroundSyncSummary"),
+						fill_horizontal = 1,
+					}),
+				}),
+				viewFactory:row({
+					spacing = viewFactory:control_spacing(),
+					viewFactory:static_text({
+						title = "",
+						width = LrView.share("labelWidth"),
+					}),
+					viewFactory:static_text({
+						title = "Sync Changes exports recent edits only; Sync Now also cleans deleted outputs.",
+						width_in_chars = 72,
 					}),
 				}),
 				viewFactory:row({

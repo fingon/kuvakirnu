@@ -21,28 +21,8 @@ building this plugin.
   date cause the dialog to flash between date groups. Tracked in
   `LIGHTROOM_GOTCHAS.md`.
 
-## MVP hardening
-
-- Make state writes safe if Lightroom exits during a long run.
-- Add a visible error/status viewer instead of relying on the Lightroom log and
-  manifest file.
-- Add a dry-run command that reports planned exports and orphans without writing
-  derivatives.
-- Add a user-facing way to locate the manifest file.
-- Add tests for failed export state transitions.
-- Add tests for output path collisions.
-- Add tests for photos without capture dates or source filenames.
-- Add tests for Lightroom-specific settings control behavior after SDK runtime
-  validation.
-
 ## Feature backlog
 
-- Background interval sync while Lightroom Classic is open.
-- Configurable export modes beyond rating threshold:
-  - all catalog photos matching rules
-  - keyword-based curated exports
-  - edited-only exports
-  - source-folder and date-range filters
 - Option to use smart collection filter with OR logic vs. the current union with star rating.
 - Support for regular (non-smart) collections.
 - Orphan review UI with archive, delete, and keep actions.

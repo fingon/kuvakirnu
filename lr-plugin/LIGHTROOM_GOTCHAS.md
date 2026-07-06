@@ -90,6 +90,15 @@ Notes from building and testing this plugin against Lightroom Classic.
 - Prefer `catalog:findPhotos()` search descriptors for rating-filtered syncs.
   A full-catalog `catalog:getAllPhotos()` call can be expensive before plugin
   code can report detailed per-photo progress.
+- For incremental sync, `catalog:findPhotos()` supports the `touchTime`
+  criterion for Lightroom edit time. Use it to narrow candidates before loading
+  metadata.
+- Still exact-filter with `lastEditTime` from raw metadata after candidates are
+  loaded. This keeps the five-minute cooldown and lower-bound behavior under
+  plugin control instead of relying entirely on search descriptor precision.
+- Background work should use cooperative loops with `LrTasks.sleep()` and a
+  plugin-owned shutdown flag. Lightroom does not provide a documented SDK API
+  for global mouse or keyboard idle detection.
 
 ## Filesystem behavior
 
