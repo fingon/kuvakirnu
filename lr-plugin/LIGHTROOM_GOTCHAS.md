@@ -21,6 +21,10 @@ Notes from building and testing this plugin against Lightroom Classic.
   actions and property observers.
 - Keep derived UI fields, such as display labels and status summaries, out of
   persisted preferences.
+- Plugin preferences are global to the plugin, not the active catalog. Prefix
+  durable keys with a catalog-owned UUID stored via catalog plugin properties.
+  Keep runtime status writes separate from editable settings writes so a stale
+  Plug-in Manager property table cannot overwrite a completed background run.
 
 ## Settings controls
 
@@ -79,7 +83,10 @@ Notes from building and testing this plugin against Lightroom Classic.
 - Lightroom catalog and export APIs may yield.
 - Do not wrap yielding Lightroom APIs in `pcall`; Lua reports
   `Yielding is not allowed within a C or metamethod call`.
-- Run long work from `LrTasks.startAsyncTask`.
+- Run long work with `LrFunctionContext.postAsyncTaskWithContext` when cleanup
+  or failure handling matters. Register cleanup before invoking yielding APIs;
+  this prevents a thrown error from leaving single-flight flags or progress
+  scopes active.
 - `LrView` callbacks (`action`, `validate`, `key_up`, etc.) run in Lightroom's
   main task and **do not support yielding**. Catalog methods
   (`LrApplication.activeCatalog()`, `catalog:getChildCollections()`,
@@ -106,6 +113,11 @@ Notes from building and testing this plugin against Lightroom Classic.
   `mkdir -p` or other filesystem operations.
 - Prefer `LrFileUtils.createAllDirectories` inside Lightroom.
 - Return clear errors when directory creation cannot be performed.
+- Replace state and exported files through a backup-and-restore operation. A
+  failed final move must restore the previous target, and state loading should
+  recover from the retained backup.
+- Never delete a path from persisted state until it has been checked against a
+  catalog-owned output root with a directory-boundary-aware containment test.
 
 ## Metadata edge cases
 

@@ -106,4 +106,16 @@ function Path.dirname(path)
 	return tostring(path):match("^(.*)[/\\][^/\\]+$") or "."
 end
 
+function Path.isWithin(path, root)
+	local normalizedPath = tostring(path or ""):gsub("\\", "/"):gsub("/+$", "")
+	local normalizedRoot = tostring(root or ""):gsub("\\", "/"):gsub("/+$", "")
+	if normalizedPath == "" or normalizedRoot == "" then
+		return false
+	end
+
+	return normalizedPath == normalizedRoot
+		or normalizedPath:sub(1, #normalizedRoot + 1)
+			== normalizedRoot .. "/"
+end
+
 return Path

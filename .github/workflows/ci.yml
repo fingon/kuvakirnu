@@ -13,8 +13,5 @@ jobs:
 
       - uses: j178/prek-action@v2
 
-      - name: Run tests
-        run: make test
-
-      - name: Build
-        run: make build
+      - name: Check
+        run: make check

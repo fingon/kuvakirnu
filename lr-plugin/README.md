@@ -51,11 +51,13 @@ Canceling the progress dialog stops before later phases when possible.
   Lightroom exposes a copy name.
 - Reuses the recorded output path for already-seen photos so downstream asset
   paths remain stable.
-- Stores sync state in a plugin-owned Lua manifest file.
+- Stores settings, incremental cursors, and sync state separately for each
+  Lightroom catalog. Existing global settings and state are adopted by the
+  first catalog opened after upgrading.
 - Exports Lightroom metadata into JPEGs, including hierarchical keywords and
   location metadata when Lightroom provides them.
-- Deletes derivative files and marks state records orphaned when photos stop
-  matching the configured rules.
+- Deletes derivative files when photos stop matching the configured rules, but
+  only when the recorded path is inside an output root owned by that catalog.
 - Shows compact last-run status in the Plug-in Manager and stores a full
   diagnostic string in plugin preferences and the Lightroom plugin log.
 - Prevents concurrent manual sync runs while a run is already active.
@@ -76,6 +78,9 @@ Configure the plugin in Lightroom Classic Plug-in Manager:
 - JPEG long edge, default `3200`.
 - JPEG quality, default `85`.
 - Background sync interval, default `Never`.
+- Optional case-sensitive smart collection name filter. Matching smart
+  collections are combined with the rating selection; a filter-only sync is
+  blocked when no collection matches.
 - `Sync Now`, enabled when an output folder and at least one rating selection
   are configured. This is the full cleanup sync.
 - `Sync Changes`, enabled with the same configuration. This is incremental and
@@ -86,14 +91,13 @@ Configure the plugin in Lightroom Classic Plug-in Manager:
 From the repository root:
 
 ```sh
-make lint
-make test
-make build
+make check
+prek run --all-files
 ```
 
-The local tests cover pure Lua planning, path, manifest, and configuration
-behavior. Lightroom export behavior still needs manual validation inside
-Lightroom Classic.
+The local tests cover pure Lua planning, paths, state recovery, export outcome
+accounting, incremental windows, and configuration behavior. Lightroom SDK
+integration still needs manual validation inside Lightroom Classic.
 
 ## Troubleshooting
 

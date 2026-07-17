@@ -68,11 +68,13 @@ local function selected(photo, config, options)
 	if photo.isVideo then
 		return false
 	end
+	if photo.isRejected then
+		return false
+	end
+	if photo.isVirtualCopy and not config.includeVirtualCopies then
+		return false
+	end
 	if options and options[trustedCatalogSelection] then
-		if photo.isVirtualCopy and not config.includeVirtualCopies then
-			return false
-		end
-
 		return true
 	end
 

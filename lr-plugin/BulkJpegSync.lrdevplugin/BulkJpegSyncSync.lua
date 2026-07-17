@@ -1,6 +1,6 @@
 local LrApplication = import("LrApplication")
 local LrDialogs = import("LrDialogs")
-local LrPathUtils = import("LrPathUtils")
+local LrFunctionContext = import("LrFunctionContext")
 local LrPrefs = import("LrPrefs")
 local LrProgressScope = import("LrProgressScope")
 
@@ -8,15 +8,18 @@ local Catalog = require("BulkJpegSyncCatalog")
 local Config = require("BulkJpegSyncConfig")
 local Exporter = require("BulkJpegSyncExporter")
 local FileUtils = require("BulkJpegSyncFileUtils")
+local Incremental = require("BulkJpegSyncIncremental")
 local Logger = require("BulkJpegSyncLogger")
 local Path = require("BulkJpegSyncPath")
 local Photo = require("BulkJpegSyncPhoto")
+local Profile = require("BulkJpegSyncProfile")
 local Scanner = require("BulkJpegSyncScanner")
 local State = require("BulkJpegSyncState")
 
 local Sync = {}
 
 local running = false
+local activeProgressScope = nil
 local syncCanceledMessage = "sync canceled"
 local trustedCatalogSelectionOption = "trustedCatalogSelection"
 local skipAbsentOrphansOption = "skipAbsentOrphans"
@@ -32,60 +35,12 @@ local cleanupProgressEnd = 470
 local exportProgressEnd = 940
 local saveProgressDone = 970
 
-local function statePath()
-	return LrPathUtils.child(Config.pluginDataDirectory(), Config.stateFileName)
-end
-
 local function now()
 	return os.date("!%Y-%m-%dT%H:%M:%SZ")
 end
 
 local function nowSec()
 	return os.time()
-end
-
-local function lastEditTimeSec(value)
-	if value == nil or value == "" then
-		return nil
-	end
-	local number = tonumber(value)
-	if number then
-		return number
-	end
-
-	local year, month, day, hour, min, sec = tostring(value):match(
-		"^(%d%d%d%d)%-(%d%d)%-(%d%d)T(%d%d):(%d%d):(%d%d)"
-	)
-	if not year then
-		return nil
-	end
-
-	return os.time({
-		year = tonumber(year),
-		month = tonumber(month),
-		day = tonumber(day),
-		hour = tonumber(hour),
-		min = tonumber(min),
-		sec = tonumber(sec),
-	})
-end
-
-local function includeInIncrementalWindow(photo, lowerBoundSec, upperBoundSec)
-	local editedAtSec = lastEditTimeSec(photo.lastEditTime)
-	return editedAtSec ~= nil
-		and editedAtSec > lowerBoundSec
-		and editedAtSec < upperBoundSec
-end
-
-local function filterIncrementalPhotos(photos, lowerBoundSec, upperBoundSec)
-	local filtered = {}
-	for _, photo in ipairs(photos) do
-		if includeInIncrementalWindow(photo, lowerBoundSec, upperBoundSec) then
-			filtered[#filtered + 1] = photo
-		end
-	end
-
-	return filtered
 end
 
 local function canceled(progressScope)
@@ -95,7 +50,12 @@ local function canceled(progressScope)
 end
 
 local function finish(progressScope)
-	progressScope:done()
+	if progressScope then
+		progressScope:done()
+	end
+	if activeProgressScope == progressScope then
+		activeProgressScope = nil
+	end
 	running = false
 end
 
@@ -153,18 +113,110 @@ local function snapshotsFromMetadata(photos, metadata)
 	return snapshots
 end
 
+local function loadCatalogState(profile, config, legacyCursorSec)
+	local profileStatePath = Profile.statePath(profile)
+	local state
+	local stateErr
+	local stateLoadInfo
+	local loadedProfileState = false
+	if
+		FileUtils.fileExists(profileStatePath)
+		or FileUtils.fileExists(profileStatePath .. ".bak")
+	then
+		loadedProfileState = true
+		state, stateErr, stateLoadInfo = State.load(profileStatePath)
+	else
+		local legacyStatePath = Profile.legacyStatePath()
+		if FileUtils.fileExists(legacyStatePath) then
+			state, stateErr, stateLoadInfo = State.load(legacyStatePath)
+			if state then
+				state.version = 2
+				state.catalogId = profile.id
+				state.catalogPath = profile.catalogPath
+				state.ownedOutputRoots = {
+					[config.outputDirectory] = true,
+				}
+				state.incrementalProcessedThroughSec = legacyCursorSec or 0
+				local saved, saveErr = State.save(profileStatePath, state)
+				if not saved then
+					return nil,
+						nil,
+						"failed to migrate legacy state: " .. tostring(saveErr)
+				end
+				local migratedPath = legacyStatePath .. ".catalog-migration.bak"
+				if FileUtils.fileExists(migratedPath) then
+					local deleted, deleteErr =
+						FileUtils.deleteFile(migratedPath)
+					if not deleted then
+						return nil, nil, deleteErr
+					end
+				end
+				local moved, moveErr =
+					FileUtils.moveFile(legacyStatePath, migratedPath)
+				if not moved then
+					return nil, nil, moveErr
+				end
+				Logger.info("state_migrated_to_catalog_profile", {
+					catalog = profile.catalogPath,
+					profile = profile.id,
+				})
+			end
+		else
+			state = State.empty(profile)
+		end
+	end
+	if not state then
+		return nil, nil, stateErr
+	end
+	if state.catalogId and state.catalogId ~= profile.id then
+		return nil, nil, "sync state belongs to another Lightroom catalog"
+	end
+	local profileStateNeedsUpgrade = loadedProfileState
+		and (
+			state.version == 1
+			or (stateLoadInfo and stateLoadInfo.legacyOrphanedRecordsMigrated)
+		)
+	state.version = 2
+	state.catalogId = profile.id
+	state.catalogPath = profile.catalogPath
+	state.ownedOutputRoots = state.ownedOutputRoots or {}
+	state.ownedOutputRoots[config.outputDirectory] = true
+	state.incrementalProcessedThroughSec = tonumber(
+		state.incrementalProcessedThroughSec
+	) or legacyCursorSec or 0
+	if profileStateNeedsUpgrade then
+		local saved, saveErr = State.save(profileStatePath, state)
+		if not saved then
+			return nil,
+				nil,
+				"failed to persist upgraded catalog state: " .. tostring(
+					saveErr
+				)
+		end
+	end
+
+	return state, profileStatePath, nil, stateLoadInfo
+end
+
 local function updateLastRun(
 	activeProperties,
 	prefs,
+	profileId,
 	startedAtSec,
+	processedThroughSec,
 	stats,
 	exportedCount,
 	deletedCount,
 	failedCount
 )
 	local timestamp = now()
+	local persistedProperties = {}
+	Config.loadPreferencesIntoProperties(prefs, persistedProperties, profileId)
+	if processedThroughSec ~= nil then
+		persistedProperties.incrementalProcessedThroughSec = processedThroughSec
+	end
 	Config.updateLastRunProperties(
-		prefs,
+		persistedProperties,
 		timestamp,
 		startedAtSec,
 		stats,
@@ -172,7 +224,12 @@ local function updateLastRun(
 		deletedCount,
 		failedCount
 	)
-	if activeProperties and activeProperties ~= prefs then
+	Config.saveRuntimeToPreferences(persistedProperties, prefs, profileId)
+	if activeProperties then
+		if processedThroughSec ~= nil then
+			activeProperties.incrementalProcessedThroughSec =
+				processedThroughSec
+		end
 		Config.updateLastRunProperties(
 			activeProperties,
 			timestamp,
@@ -184,7 +241,7 @@ local function updateLastRun(
 		)
 	end
 	Logger.info("sync_completed", {
-		diagnostic = prefs.lastRunDiagnostic,
+		diagnostic = persistedProperties.lastRunDiagnostic,
 		candidates = stats.candidates,
 		selected = stats.selected,
 		exported = exportedCount,
@@ -204,7 +261,13 @@ function Sync.isRunning()
 	return running
 end
 
-function Sync.run(activeProperties, options)
+function Sync.requestCancel()
+	if activeProgressScope and activeProgressScope.cancel then
+		activeProgressScope:cancel()
+	end
+end
+
+local function runCore(activeProperties, options)
 	if running then
 		return nil, "sync is already running"
 	end
@@ -215,7 +278,17 @@ function Sync.run(activeProperties, options)
 	local startedAtSec = options.startedAtSec or nowSec()
 
 	local prefs = LrPrefs.prefsForPlugin()
-	local properties = activeProperties or prefs
+	local catalog = LrApplication.activeCatalog()
+	local profile, profileErr = Profile.forCatalog(catalog)
+	if not profile then
+		running = false
+		return nil, profileErr
+	end
+	local properties = activeProperties
+	if not properties then
+		properties = {}
+		Config.loadPreferencesIntoProperties(prefs, properties, profile.id)
+	end
 	local config, configErr = Config.fromProperties(properties)
 	if not config then
 		running = false
@@ -233,12 +306,31 @@ function Sync.run(activeProperties, options)
 	})
 
 	local progressScope = LrProgressScope({ title = "Bulk JPEG Sync" })
-
+	activeProgressScope = progressScope
 	setProgress(progressScope, "Loading sync state", loadProgressDone)
-	local state, stateErr = State.load(statePath())
+	local state, runStatePath, stateErr, stateLoadInfo = loadCatalogState(
+		profile,
+		config,
+		tonumber(properties.incrementalProcessedThroughSec)
+			or tonumber(properties.lastSuccessfulSyncStartedAtSec)
+			or 0
+	)
 	if not state then
 		finish(progressScope)
 		return nil, stateErr
+	end
+	if stateLoadInfo and stateLoadInfo.recoveredFromBackup then
+		Logger.warn("state_recovered_from_backup", {
+			catalog = profile.catalogPath,
+			error = stateLoadInfo.primaryError,
+		})
+	end
+	if stateLoadInfo and stateLoadInfo.legacyOrphanedRecordsMigrated then
+		Logger.info("legacy_orphaned_state_records_migrated", {
+			catalog = profile.catalogPath,
+			count = stateLoadInfo.legacyOrphanedRecordsMigrated,
+			profile = profile.id,
+		})
 	end
 
 	if canceled(progressScope) then
@@ -252,21 +344,26 @@ function Sync.run(activeProperties, options)
 		"Searching Lightroom catalog",
 		searchProgressDone
 	)
-	local catalog = LrApplication.activeCatalog()
 	local photos = {}
-	local incrementalLowerBoundSec = tonumber(
-		properties.lastSuccessfulSyncStartedAtSec
-	) or 0
-	local incrementalUpperBoundSec = startedAtSec
-		- Config.incrementalEditCooldownSec
+	local incrementalLowerBoundSec = state.incrementalProcessedThroughSec
+	local incrementalWindow = Incremental.window(
+		incrementalLowerBoundSec,
+		startedAtSec,
+		Config.incrementalEditCooldownSec
+	)
+	local incrementalUpperBoundSec = incrementalWindow.upperBoundSec
+	local incrementalWindowReady = not incremental or incrementalWindow.ready
 	local candidateSearchOptions = nil
-	if incremental then
+	if incremental and incrementalWindowReady then
 		candidateSearchOptions = {
 			editedAfterSec = incrementalLowerBoundSec,
 			editedBeforeSec = incrementalUpperBoundSec,
 		}
 	end
-	if config.minRating ~= nil or config.includeUnstarred then
+	if
+		incrementalWindowReady
+		and (config.minRating ~= nil or config.includeUnstarred)
+	then
 		local ratingPhotos, photosErr =
 			Catalog.findCandidates(catalog, config, candidateSearchOptions)
 		if not ratingPhotos then
@@ -276,13 +373,26 @@ function Sync.run(activeProperties, options)
 		photos = ratingPhotos
 	end
 	if
-		config.smartCollectionFilter ~= nil
+		incrementalWindowReady
+		and config.smartCollectionFilter ~= nil
 		and config.smartCollectionFilter ~= ""
 	then
-		local scPhotos = Catalog.findBySmartCollectionFilter(
+		local matchingCollections = Catalog.getMatchingSmartCollections(
 			catalog,
 			config.smartCollectionFilter
 		)
+		if
+			#matchingCollections == 0
+			and config.minRating == nil
+			and not config.includeUnstarred
+		then
+			finish(progressScope)
+			return nil,
+				"no smart collections match filter: "
+					.. config.smartCollectionFilter
+		end
+		local scPhotos =
+			Catalog.photosFromSmartCollections(catalog, matchingCollections)
 		photos = Catalog.unionPhotoLists(photos, scPhotos)
 	end
 	Logger.info("catalog_search_completed", {
@@ -321,11 +431,7 @@ function Sync.run(activeProperties, options)
 
 	local snapshots = snapshotsFromMetadata(photos, metadata)
 	if incremental then
-		snapshots = filterIncrementalPhotos(
-			snapshots,
-			incrementalLowerBoundSec,
-			incrementalUpperBoundSec
-		)
+		snapshots = Incremental.filter(snapshots, incrementalWindow)
 		Logger.info("incremental_filter_completed", {
 			input = #photos,
 			selected = #snapshots,
@@ -403,21 +509,38 @@ function Sync.run(activeProperties, options)
 			)
 			local outputPath = orphan.record and orphan.record.outputPath
 			local deleteFailed = false
+			local ownedOutputPath = false
+			for outputRoot in pairs(state.ownedOutputRoots) do
+				if Path.isWithin(outputPath, outputRoot) then
+					ownedOutputPath = true
+					break
+				end
+			end
 			if
 				outputPath
 				and outputPath ~= ""
 				and FileUtils.fileExists(outputPath)
 			then
-				local deleted, deleteErr = FileUtils.deleteFile(outputPath)
-				if deleted then
-					deletedCount = deletedCount + 1
+				if ownedOutputPath then
+					local deleted, deleteErr = FileUtils.deleteFile(outputPath)
+					if deleted then
+						deletedCount = deletedCount + 1
+					else
+						deleteFailed = true
+						failedCount = failedCount + 1
+						Logger.error("orphan_delete_failed", {
+							photo = orphan.identifier or "unknown",
+							output = outputPath,
+							error = deleteErr,
+						})
+					end
 				else
 					deleteFailed = true
 					failedCount = failedCount + 1
-					Logger.error("orphan_delete_failed", {
+					Logger.error("orphan_delete_refused", {
 						photo = orphan.identifier or "unknown",
 						output = outputPath,
-						error = deleteErr,
+						error = "output is outside catalog-owned roots",
 					})
 				end
 			end
@@ -484,11 +607,28 @@ function Sync.run(activeProperties, options)
 			item.configOutputSettingsFingerprint =
 				config.outputSettingsFingerprint
 		end
-		local exportOk, exportErr = Exporter.exportItems(items, config, nil)
-		if exportOk then
+		local outcomes, exportErr =
+			Exporter.exportItems(items, config, progressScope)
+		local exportCanceled = false
+		if outcomes then
 			for _, item in ipairs(items) do
-				State.markExported(state, item, item.outputPath, now())
-				exportedCount = exportedCount + 1
+				local outcome = outcomes[item]
+				if outcome and outcome.status == "exported" then
+					State.markExported(state, item, item.outputPath, now())
+					exportedCount = exportedCount + 1
+				elseif outcome and outcome.status == "canceled" then
+					exportCanceled = true
+				else
+					local itemErr = outcome and outcome.error
+						or "export outcome is missing"
+					State.markFailed(state, item, itemErr)
+					failedCount = failedCount + 1
+					Logger.error("photo_export_failed", {
+						photo = item.photo.identifier,
+						output = item.outputPath,
+						error = itemErr,
+					})
+				end
 			end
 		else
 			for _, item in ipairs(items) do
@@ -500,6 +640,19 @@ function Sync.run(activeProperties, options)
 					error = exportErr,
 				})
 			end
+		end
+		if exportCanceled then
+			local partialSaveOk, partialSaveErr =
+				State.save(runStatePath, state)
+			finish(progressScope)
+			Logger.info("sync_canceled", { phase = "exporting" })
+			if not partialSaveOk then
+				return nil,
+					syncCanceledMessage
+						.. "; failed to save partial state: "
+						.. tostring(partialSaveErr)
+			end
+			return nil, syncCanceledMessage
 		end
 		overallIndex = rangeEnd
 		progressScope:setPortionComplete(
@@ -519,7 +672,13 @@ function Sync.run(activeProperties, options)
 	})
 
 	setProgress(progressScope, "Saving sync state", saveProgressDone)
-	local saveOk, saveErr = State.save(statePath(), state)
+	local processedThroughSec = failedCount == 0
+			and (incremental and incrementalUpperBoundSec or startedAtSec)
+		or nil
+	if processedThroughSec ~= nil then
+		state.incrementalProcessedThroughSec = processedThroughSec
+	end
+	local saveOk, saveErr = State.save(runStatePath, state)
 	if not saveOk then
 		finish(progressScope)
 		return nil, saveErr
@@ -528,7 +687,9 @@ function Sync.run(activeProperties, options)
 	updateLastRun(
 		activeProperties,
 		prefs,
+		profile.id,
 		startedAtSec,
+		processedThroughSec,
 		plan.stats,
 		exportedCount,
 		deletedCount,
@@ -545,6 +706,27 @@ function Sync.run(activeProperties, options)
 	finish(progressScope)
 
 	return true
+end
+
+function Sync.run(activeProperties, options)
+	local callOk, runOk, runErr = LrFunctionContext.pcallWithContext(
+		"BulkJpegSyncRun",
+		function(context)
+			context:addCleanupHandler(function()
+				if activeProgressScope then
+					activeProgressScope:done()
+					activeProgressScope = nil
+				end
+				running = false
+			end)
+			return runCore(activeProperties, options)
+		end
+	)
+	if not callOk then
+		return nil, "unexpected sync failure: " .. tostring(runOk)
+	end
+
+	return runOk, runErr
 end
 
 function Sync.runIncremental(activeProperties, options)

@@ -18,7 +18,7 @@ Config.defaultBackgroundSyncInterval = Config.backgroundSyncNever
 Config.backgroundSyncHourlySec = 60 * 60
 Config.backgroundSyncDailySec = 24 * 60 * 60
 Config.incrementalEditCooldownSec = 5 * 60
-Config.preferenceKeys = {
+Config.editablePreferenceKeys = {
 	"outputDirectory",
 	"minRating",
 	"longEdgePixels",
@@ -27,7 +27,10 @@ Config.preferenceKeys = {
 	"includeVirtualCopies",
 	"smartCollectionFilter",
 	"backgroundSyncInterval",
+}
+Config.runtimePreferenceKeys = {
 	"lastSuccessfulSyncStartedAtSec",
+	"incrementalProcessedThroughSec",
 	"lastBackgroundAttemptAtSec",
 	"lastBackgroundFullSyncAtSec",
 	"lastRunAt",
@@ -35,6 +38,19 @@ Config.preferenceKeys = {
 	"lastRunCleanup",
 	"lastRunDiagnostic",
 }
+Config.preferenceKeys = {}
+for _, key in ipairs(Config.editablePreferenceKeys) do
+	Config.preferenceKeys[#Config.preferenceKeys + 1] = key
+end
+
+local catalogPreferencesMigratedKey = "catalog.preferences.migrated"
+
+local function profilePreferenceKey(profileId, key)
+	return "catalog." .. tostring(profileId) .. "." .. key
+end
+for _, key in ipairs(Config.runtimePreferenceKeys) do
+	Config.preferenceKeys[#Config.preferenceKeys + 1] = key
+end
 
 local noStarThreshold = 0
 
@@ -151,6 +167,8 @@ function Config.ensureDefaults(properties)
 		normalizeBackgroundSyncInterval(properties.backgroundSyncInterval)
 	properties.lastSuccessfulSyncStartedAtSec =
 		normalizeNumber(properties.lastSuccessfulSyncStartedAtSec, 0)
+	properties.incrementalProcessedThroughSec =
+		normalizeNumber(properties.incrementalProcessedThroughSec, 0)
 	properties.lastBackgroundAttemptAtSec =
 		normalizeNumber(properties.lastBackgroundAttemptAtSec, 0)
 	properties.lastBackgroundFullSyncAtSec =
@@ -257,21 +275,60 @@ function Config.updateLastRunProperties(
 	Config.refreshDerivedProperties(properties)
 end
 
-function Config.loadPreferencesIntoProperties(prefs, properties)
-	Config.ensureDefaults(prefs)
-	for _, key in ipairs(Config.preferenceKeys) do
-		properties[key] = prefs[key]
+function Config.loadPreferencesIntoProperties(prefs, properties, profileId)
+	if profileId == nil then
+		Config.ensureDefaults(prefs)
+		for _, key in ipairs(Config.preferenceKeys) do
+			properties[key] = prefs[key]
+		end
+	else
+		local initializedKey = profilePreferenceKey(profileId, "initialized")
+		local adoptLegacy = prefs[initializedKey] ~= true
+			and prefs[catalogPreferencesMigratedKey] ~= true
+		if adoptLegacy then
+			Config.ensureDefaults(prefs)
+		end
+		for _, key in ipairs(Config.preferenceKeys) do
+			local scopedKey = profilePreferenceKey(profileId, key)
+			local value = prefs[scopedKey]
+			if value == nil and adoptLegacy then
+				value = prefs[key]
+			end
+			properties[key] = value
+			if value ~= nil then
+				prefs[scopedKey] = value
+			end
+		end
+		prefs[initializedKey] = true
+		if adoptLegacy then
+			prefs[catalogPreferencesMigratedKey] = true
+		end
 	end
 	Config.ensureDefaults(properties)
 	Config.refreshDerivedProperties(properties)
 end
 
-function Config.savePropertiesToPreferences(properties, prefs)
+function Config.savePropertiesToPreferences(properties, prefs, profileId)
 	Config.ensureDefaults(properties)
-	for _, key in ipairs(Config.preferenceKeys) do
-		prefs[key] = properties[key]
+	for _, key in ipairs(Config.editablePreferenceKeys) do
+		local targetKey = profileId and profilePreferenceKey(profileId, key)
+			or key
+		prefs[targetKey] = properties[key]
 	end
 	Config.refreshDerivedProperties(properties)
+end
+
+function Config.saveRuntimeToPreferences(properties, prefs, profileId)
+	Config.ensureDefaults(properties)
+	for _, key in ipairs(Config.runtimePreferenceKeys) do
+		local targetKey = profileId and profilePreferenceKey(profileId, key)
+			or key
+		prefs[targetKey] = properties[key]
+	end
+end
+
+function Config.profilePreferenceKey(profileId, key)
+	return profilePreferenceKey(profileId, key)
 end
 
 function Config.toggleMinRating(currentMinRating, selectedRating)
@@ -355,6 +412,13 @@ end
 function Config.smartCollectionSummary(properties)
 	local filter = properties.smartCollectionFilter or ""
 	local matchCount = properties.smartCollectionMatchCount
+	if properties.smartCollectionLookupError then
+		return "Smart collection lookup failed: "
+			.. tostring(properties.smartCollectionLookupError)
+	end
+	if properties.smartCollectionLookupPending then
+		return "Searching for smart collections..."
+	end
 	if filter == "" then
 		return "Type name to filter by smart collection"
 	end
@@ -413,27 +477,48 @@ function Config.fromProperties(properties)
 
 	local minRating = tonumber(properties.minRating)
 	local longEdgePixels = tonumber(properties.longEdgePixels)
-		or Config.defaultLongEdgePixels
 	local jpegQuality = tonumber(properties.jpegQuality)
-		or Config.defaultJpegQuality
 
 	if minRating == nil then
-		minRating = Config.defaultMinRating
+		return nil, "minimum rating must be a number between 0 and 5"
+	end
+	if longEdgePixels == nil then
+		return nil, "long edge pixels must be a positive whole number"
+	end
+	if jpegQuality == nil then
+		return nil, "JPEG quality must be a whole number between 1 and 100"
 	end
 	if minRating < noStarThreshold or minRating > 5 then
 		return nil, "minimum rating must be between 0 and 5"
 	end
+	if minRating % 1 ~= 0 then
+		return nil, "minimum rating must be a whole number between 0 and 5"
+	end
 	if longEdgePixels < 1 then
 		return nil, "long edge pixels must be greater than zero"
 	end
+	if longEdgePixels % 1 ~= 0 then
+		return nil, "long edge pixels must be a positive whole number"
+	end
 	if jpegQuality < 1 or jpegQuality > 100 then
 		return nil, "JPEG quality must be between 1 and 100"
+	end
+	if jpegQuality % 1 ~= 0 then
+		return nil, "JPEG quality must be a whole number between 1 and 100"
 	end
 	if
 		properties.outputDirectory == nil
 		or properties.outputDirectory == ""
 	then
 		return nil, "output directory is not configured"
+	end
+	local hasStarSelection = properties.includeUnstarred == true
+		or (minRating >= 1 and minRating <= 5)
+	local hasSmartCollectionSelection =
+		not blank(properties.smartCollectionFilter)
+	if not hasStarSelection and not hasSmartCollectionSelection then
+		return nil,
+			"select unstarred, a star threshold, or a smart collection filter"
 	end
 
 	local config = {

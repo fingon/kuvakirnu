@@ -83,19 +83,38 @@ local function runLoop()
 
 	while not stopRequested do
 		local prefs = LrPrefs.prefsForPlugin()
-		Config.ensureDefaults(prefs)
+		local LrApplication = maybeImport("LrApplication")
+		if not LrApplication or not LrApplication.activeCatalog then
+			Logger.error("background_sync_unavailable", {
+				error = "Lightroom catalog is unavailable",
+			})
+			running = false
+			return
+		end
+		local Profile = require("BulkJpegSyncProfile")
+		local profile, profileErr =
+			Profile.forCatalog(LrApplication.activeCatalog())
+		if not profile then
+			Logger.error("background_sync_unavailable", { error = profileErr })
+			running = false
+			return
+		end
+		local properties = {}
+		Config.loadPreferencesIntoProperties(prefs, properties, profile.id)
 		local currentTimeSec = nowSec()
 		local Sync = require("BulkJpegSyncSync")
-		local mode, reason = Background.nextMode(prefs, currentTimeSec)
+		local mode, reason = Background.nextMode(properties, currentTimeSec)
 		if mode and not Sync.isRunning() then
-			prefs.lastBackgroundAttemptAtSec = currentTimeSec
-			local ok, err = Sync.run(prefs, {
+			properties.lastBackgroundAttemptAtSec = currentTimeSec
+			Config.saveRuntimeToPreferences(properties, prefs, profile.id)
+			local ok, err = Sync.run(nil, {
 				mode = mode,
 				startedAtSec = currentTimeSec,
 				suppressDialogs = true,
 			})
 			if ok and mode == fullMode then
-				prefs.lastBackgroundFullSyncAtSec = currentTimeSec
+				properties.lastBackgroundFullSyncAtSec = currentTimeSec
+				Config.saveRuntimeToPreferences(properties, prefs, profile.id)
 			elseif not ok then
 				Logger.error("background_sync_failed", {
 					mode = mode,
@@ -120,21 +139,41 @@ function Background.start()
 	if running then
 		return
 	end
-	local LrTasks = maybeImport("LrTasks")
-	if not LrTasks or not LrTasks.startAsyncTask then
+	local LrFunctionContext = maybeImport("LrFunctionContext")
+	if
+		not LrFunctionContext or not LrFunctionContext.postAsyncTaskWithContext
+	then
 		Logger.error("background_sync_unavailable", {
-			error = "Lightroom tasks are unavailable",
+			error = "Lightroom function context is unavailable",
 		})
 		return
 	end
 
 	running = true
 	stopRequested = false
-	LrTasks.startAsyncTask(runLoop)
+	LrFunctionContext.postAsyncTaskWithContext(
+		"BulkJpegSyncBackground",
+		function(context)
+			context:addCleanupHandler(function()
+				running = false
+				stopRequested = false
+			end)
+			context:addFailureHandler(function(_, err)
+				Logger.error("background_sync_failed", {
+					error = tostring(err),
+				})
+			end)
+			runLoop()
+		end
+	)
 end
 
 function Background.requestStop()
 	stopRequested = true
+end
+
+function Background.isRunning()
+	return running
 end
 
 return Background

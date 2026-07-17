@@ -1,4 +1,5 @@
 local FileUtils = require("BulkJpegSyncFileUtils")
+local Logger = require("BulkJpegSyncLogger")
 local Path = require("BulkJpegSyncPath")
 
 local Exporter = {}
@@ -71,14 +72,21 @@ function Exporter.exportSettings(config, temporaryDirectory)
 end
 
 function Exporter.exportItems(items, config, progressScope)
+	if #items == 0 then
+		return {}
+	end
 	local LrExportSession = maybeImport("LrExportSession")
 	if not LrExportSession then
 		return nil, "LrExportSession is unavailable"
 	end
 
 	local photos = {}
+	local itemByPhoto = {}
+	local outcomes = {}
 	for _, item in ipairs(items) do
 		photos[#photos + 1] = item.photo.handle
+		itemByPhoto[item.photo.handle] = item
+		outcomes[item] = { status = "pending" }
 	end
 
 	local temporaryDirectory = Path.dirname(items[1].outputPath)
@@ -93,37 +101,81 @@ function Exporter.exportItems(items, config, progressScope)
 		exportSettings = Exporter.exportSettings(config, temporaryDirectory),
 	})
 
-	local index = 0
-	for _, rendition in session:renditions({ stopIfCanceled = true }) do
-		index = index + 1
-		local item = items[index]
+	local renditionOptions = { stopIfCanceled = true }
+	if progressScope then
+		renditionOptions.progressScope = progressScope
+	end
+	for _, rendition in session:renditions(renditionOptions) do
+		local item = itemByPhoto[rendition.photo]
+		if not item or outcomes[item].status ~= "pending" then
+			for _, pendingItem in ipairs(items) do
+				if outcomes[pendingItem].status == "pending" then
+					outcomes[pendingItem] = {
+						status = "failed",
+						error = "Lightroom returned an extra, duplicate, or unmappable rendition",
+					}
+				end
+			end
+			break
+		end
 		if progressScope then
-			progressScope:setPortionComplete(index - 1, #items)
 			progressScope:setCaption("Exporting " .. item.photo.fileName)
 		end
 
 		local success, exportedPathOrMessage = rendition:waitForRender()
 		if not success then
-			return nil, exportedPathOrMessage
-		end
-
-		local finalDirOk, finalDirErr = mkdirp(Path.dirname(item.outputPath))
-		if not finalDirOk then
-			return nil, finalDirErr
-		end
-
-		local replaced, replaceErr =
-			FileUtils.replaceFile(exportedPathOrMessage, item.outputPath)
-		if not replaced then
-			return nil, replaceErr
+			outcomes[item] = {
+				status = "failed",
+				error = tostring(exportedPathOrMessage),
+			}
+		else
+			local finalDirOk, finalDirErr =
+				mkdirp(Path.dirname(item.outputPath))
+			if not finalDirOk then
+				outcomes[item] = {
+					status = "failed",
+					error = tostring(finalDirErr),
+				}
+			else
+				local replaced, replaceErr = FileUtils.replaceFile(
+					exportedPathOrMessage,
+					item.outputPath
+				)
+				if not replaced then
+					outcomes[item] = {
+						status = "failed",
+						error = tostring(replaceErr),
+					}
+				else
+					outcomes[item] = { status = "exported" }
+					if replaceErr then
+						Logger.warn("export_backup_cleanup_failed", {
+							output = item.outputPath,
+							error = replaceErr,
+						})
+					end
+				end
+			end
 		end
 	end
 
-	if progressScope then
-		progressScope:setPortionComplete(#items, #items)
+	local wasCanceled = progressScope
+		and progressScope.isCanceled
+		and progressScope:isCanceled()
+	for _, item in ipairs(items) do
+		if outcomes[item].status == "pending" then
+			if wasCanceled then
+				outcomes[item] = { status = "canceled" }
+			else
+				outcomes[item] = {
+					status = "failed",
+					error = "Lightroom returned no rendition for the photo",
+				}
+			end
+		end
 	end
 
-	return true
+	return outcomes
 end
 
 return Exporter

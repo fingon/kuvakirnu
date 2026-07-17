@@ -8,37 +8,63 @@ local LrView = import("LrView")
 
 local Catalog = require("BulkJpegSyncCatalog")
 local Config = require("BulkJpegSyncConfig")
+local Logger = require("BulkJpegSyncLogger")
+local Profile = require("BulkJpegSyncProfile")
 local SyncLauncher = require("BulkJpegSyncSyncLauncher")
 
 local includeUnstarredTitle = "Include unstarred"
 local includeVirtualCopiesTitle = "Include virtual copies"
+local smartCollectionDebounceSec = 0.3
+local smartCollectionLookupStates = setmetatable({}, { __mode = "k" })
 
 local function refreshDerivedProperties(properties)
 	Config.refreshDerivedProperties(properties)
+	if properties.catalogProfileId == nil then
+		properties.canSync = false
+		properties.syncAvailabilitySummary = "Loading catalog settings..."
+	end
 end
 
 local function saveProperties(properties)
+	if properties.catalogProfileId == nil then
+		return nil, "catalog settings are still loading"
+	end
 	local prefs = LrPrefs.prefsForPlugin()
-	properties.lastSuccessfulSyncStartedAtSec =
-		prefs.lastSuccessfulSyncStartedAtSec
-	properties.lastBackgroundAttemptAtSec = prefs.lastBackgroundAttemptAtSec
-	properties.lastBackgroundFullSyncAtSec = prefs.lastBackgroundFullSyncAtSec
-	Config.savePropertiesToPreferences(properties, prefs)
+	Config.savePropertiesToPreferences(
+		properties,
+		prefs,
+		properties.catalogProfileId
+	)
+	return true
 end
 
 local function syncNow(properties)
-	saveProperties(properties)
+	local saved, saveErr = saveProperties(properties)
+	if not saved then
+		properties.syncAvailabilitySummary = tostring(saveErr)
+		return
+	end
 	refreshDerivedProperties(properties)
 	if properties.canSync then
-		SyncLauncher.runAsync(properties)
+		local launched, launchErr = SyncLauncher.runAsync(properties)
+		if not launched then
+			properties.syncAvailabilitySummary = tostring(launchErr)
+		end
 	end
 end
 
 local function syncChanges(properties)
-	saveProperties(properties)
+	local saved, saveErr = saveProperties(properties)
+	if not saved then
+		properties.syncAvailabilitySummary = tostring(saveErr)
+		return
+	end
 	refreshDerivedProperties(properties)
 	if properties.canSync then
-		SyncLauncher.runIncrementalAsync(properties)
+		local launched, launchErr = SyncLauncher.runIncrementalAsync(properties)
+		if not launched then
+			properties.syncAvailabilitySummary = tostring(launchErr)
+		end
 	end
 end
 
@@ -75,22 +101,64 @@ local function toggleUnstarred(properties)
 	refreshDerivedProperties(properties)
 end
 
-local function observeProperty(context, properties, key)
-	local observer = function()
-		saveProperties(properties)
+local function scheduleSmartCollectionLookup(properties, value)
+	local lookupState = smartCollectionLookupStates[properties]
+	if not lookupState then
+		lookupState = { generation = 0, running = false, closed = false }
+		smartCollectionLookupStates[properties] = lookupState
+	end
+	lookupState.generation = lookupState.generation + 1
+	lookupState.value = value or ""
+	properties.smartCollectionLookupError = nil
+	if lookupState.value == "" then
+		properties.smartCollectionMatchCount = nil
+		properties.smartCollectionLookupPending = false
+		refreshDerivedProperties(properties)
+	else
+		properties.smartCollectionLookupPending = true
 		refreshDerivedProperties(properties)
 	end
-	properties:addObserver(key, observer)
-	context:addCleanupHandler(function()
-		properties:removeObserver(key, observer)
-	end)
-end
+	if lookupState.running or lookupState.closed then
+		return
+	end
 
-local function observePreferences(context, properties)
-	observeProperty(context, properties, "includeUnstarred")
-	observeProperty(context, properties, "minRating")
-	observeProperty(context, properties, "includeVirtualCopies")
-	observeProperty(context, properties, "backgroundSyncInterval")
+	lookupState.running = true
+	LrFunctionContext.postAsyncTaskWithContext(
+		"BulkJpegSyncSmartCollectionLookup",
+		function(context)
+			context:addCleanupHandler(function()
+				lookupState.running = false
+			end)
+			context:addFailureHandler(function(_, err)
+				properties.smartCollectionLookupPending = false
+				properties.smartCollectionLookupError = tostring(err)
+				refreshDerivedProperties(properties)
+				Logger.error("smart_collection_lookup_failed", {
+					error = tostring(err),
+				})
+			end)
+			while not lookupState.closed do
+				local generation = lookupState.generation
+				local filter = lookupState.value
+				if filter == "" then
+					return
+				end
+				LrTasks.sleep(smartCollectionDebounceSec)
+				if generation == lookupState.generation then
+					local catalog = LrApplication.activeCatalog()
+					local matching =
+						Catalog.getMatchingSmartCollections(catalog, filter)
+					if generation == lookupState.generation then
+						properties.smartCollectionMatchCount = #matching
+						properties.smartCollectionLookupPending = false
+						properties.smartCollectionLookupError = nil
+						refreshDerivedProperties(properties)
+						return
+					end
+				end
+			end
+		end
+	)
 end
 
 local function sectionsForTopOfDialog(viewFactory, properties)
@@ -195,6 +263,10 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 					viewFactory:checkbox({
 						title = includeVirtualCopiesTitle,
 						value = bind("includeVirtualCopies"),
+						action = function()
+							saveProperties(properties)
+							refreshDerivedProperties(properties)
+						end,
 					}),
 				}),
 				viewFactory:row({
@@ -221,23 +293,7 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 						validate = function(view, value)
 							properties.smartCollectionFilter = value
 							saveProperties(properties)
-							if value ~= nil and value ~= "" then
-								LrTasks.startAsyncTask(function()
-									local catalog =
-										LrApplication.activeCatalog()
-									local matching =
-										Catalog.getMatchingSmartCollections(
-											catalog,
-											value
-										)
-									properties.smartCollectionMatchCount =
-										#matching
-									refreshDerivedProperties(properties)
-								end)
-							else
-								properties.smartCollectionMatchCount = nil
-								refreshDerivedProperties(properties)
-							end
+							scheduleSmartCollectionLookup(properties, value)
 							return true, value
 						end,
 					}),
@@ -344,6 +400,10 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 					}),
 					viewFactory:popup_menu({
 						value = bind("backgroundSyncInterval"),
+						action = function()
+							saveProperties(properties)
+							refreshDerivedProperties(properties)
+						end,
 						items = {
 							{
 								title = "Never",
@@ -456,29 +516,55 @@ local function sectionsForTopOfDialog(viewFactory, properties)
 end
 
 return {
-	sectionsForTopOfDialog = function(viewFactory, propertyTable)
-		return LrFunctionContext.callWithContext(
-			"BulkJpegSyncSettings",
+	startDialog = function(propertyTable)
+		smartCollectionLookupStates[propertyTable] = {
+			generation = 0,
+			running = false,
+			closed = false,
+		}
+		propertyTable.catalogProfileId = nil
+		Config.ensureDefaults(propertyTable)
+		refreshDerivedProperties(propertyTable)
+		LrFunctionContext.postAsyncTaskWithContext(
+			"BulkJpegSyncSettingsLoad",
 			function(context)
+				context:addFailureHandler(function(_, err)
+					propertyTable.syncAvailabilitySummary = tostring(err)
+					Logger.error("catalog_settings_load_failed", {
+						error = tostring(err),
+					})
+				end)
+				local catalog = LrApplication.activeCatalog()
+				local profile, profileErr = Profile.forCatalog(catalog)
+				if not profile then
+					propertyTable.syncAvailabilitySummary = tostring(profileErr)
+					return
+				end
 				Config.loadPreferencesIntoProperties(
 					LrPrefs.prefsForPlugin(),
-					propertyTable
+					propertyTable,
+					profile.id
 				)
-				observePreferences(context, propertyTable)
+				propertyTable.catalogProfileId = profile.id
+				refreshDerivedProperties(propertyTable)
 				local initFilter = propertyTable.smartCollectionFilter or ""
 				if initFilter ~= "" then
-					LrTasks.startAsyncTask(function()
-						local catalog = LrApplication.activeCatalog()
-						local matching = Catalog.getMatchingSmartCollections(
-							catalog,
-							initFilter
-						)
-						propertyTable.smartCollectionMatchCount = #matching
-						Config.refreshDerivedProperties(propertyTable)
-					end)
+					scheduleSmartCollectionLookup(propertyTable, initFilter)
 				end
-				return sectionsForTopOfDialog(viewFactory, propertyTable)
 			end
 		)
+	end,
+	endDialog = function(propertyTable)
+		local lookupState = smartCollectionLookupStates[propertyTable]
+		if lookupState then
+			lookupState.closed = true
+			lookupState.generation = lookupState.generation + 1
+		end
+		if propertyTable.catalogProfileId then
+			saveProperties(propertyTable)
+		end
+	end,
+	sectionsForTopOfDialog = function(viewFactory, propertyTable)
+		return sectionsForTopOfDialog(viewFactory, propertyTable)
 	end,
 }

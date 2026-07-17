@@ -6,6 +6,7 @@ local Background = require("BulkJpegSyncBackground")
 local Config = require("BulkJpegSyncConfig")
 local Exporter = require("BulkJpegSyncExporter")
 local FileUtils = require("BulkJpegSyncFileUtils")
+local Incremental = require("BulkJpegSyncIncremental")
 local Logger = require("BulkJpegSyncLogger")
 local Path = require("BulkJpegSyncPath")
 local Photo = require("BulkJpegSyncPhoto")
@@ -37,6 +38,24 @@ local function assertNil(value, message)
 	if value ~= nil then
 		error((message or "expected nil") .. ": got " .. tostring(value), 2)
 	end
+end
+
+local function writeFile(path, contents)
+	local file, openErr = io.open(path, "w")
+	assertTrue(file, openErr)
+	local wrote, writeErr = file:write(contents)
+	assertTrue(wrote, writeErr)
+	local closed, closeErr = file:close()
+	assertTrue(closed, closeErr)
+end
+
+local function copyFile(sourcePath, targetPath)
+	local source, sourceErr = io.open(sourcePath, "r")
+	assertTrue(source, sourceErr)
+	local contents = source:read("*a")
+	local sourceClosed, sourceCloseErr = source:close()
+	assertTrue(sourceClosed, sourceCloseErr)
+	writeFile(targetPath, contents)
 end
 
 local function assertPlanStats(actual, expected)
@@ -2036,6 +2055,8 @@ function tests.config_saves_properties_to_preferences()
 	assertEqual(prefs.includeUnstarred, true)
 	assertEqual(prefs.includeVirtualCopies, false)
 	assertEqual(prefs.backgroundSyncInterval, "daily")
+	assertNil(prefs.lastSuccessfulSyncStartedAtSec)
+	Config.saveRuntimeToPreferences(properties, prefs)
 	assertEqual(prefs.lastSuccessfulSyncStartedAtSec, 100)
 	assertEqual(prefs.lastBackgroundAttemptAtSec, 200)
 	assertEqual(prefs.lastBackgroundFullSyncAtSec, 300)
@@ -2479,6 +2500,242 @@ function tests.scanner_plan_with_smart_collection_mode()
 		planned.stats,
 		{ candidates = 2, selected = 2, skipped = 0, orphaned = 0, ignored = 0 }
 	)
+end
+
+function tests.scanner_trusted_catalog_selection_excludes_rejected_photos()
+	local config =
+		syncConfig({ minRating = nil, smartCollectionFilter = "Test" })
+	local planned = Scanner.plan(
+		{
+			{
+				identifier = "rejected",
+				fileName = "rejected.jpg",
+				rating = 5,
+				isRejected = true,
+				isVirtualCopy = false,
+			},
+		},
+		State.empty(),
+		config,
+		Path.derivativePath,
+		function()
+			return false
+		end,
+		nil,
+		{ trustedCatalogSelection = true }
+	)
+
+	assertEqual(#planned.exports, 0)
+	assertEqual(planned.stats.selected, 0)
+end
+
+function tests.config_from_properties_rejects_empty_selection()
+	local config, err = Config.fromProperties({
+		outputDirectory = "/out",
+		minRating = 0,
+		includeUnstarred = false,
+		smartCollectionFilter = "",
+		longEdgePixels = 3200,
+		jpegQuality = 85,
+	})
+
+	assertNil(config)
+	assertTrue(tostring(err):match("select unstarred") ~= nil)
+end
+
+function tests.incremental_windows_do_not_drop_cooldown_edits()
+	local first = Incremental.window(1000, 2000, 300)
+	assertTrue(first.ready)
+	assertEqual(first.upperBoundSec, 1700)
+	assertTrue(Incremental.includes({ lastEditTime = 1700 }, first))
+	assertTrue(not Incremental.includes({ lastEditTime = 1701 }, first))
+
+	local second = Incremental.window(first.upperBoundSec, 2600, 300)
+	assertEqual(second.lowerBoundSec, 1700)
+	assertEqual(second.upperBoundSec, 2300)
+	assertTrue(Incremental.includes({ lastEditTime = 1701 }, second))
+	assertTrue(Incremental.includes({ lastEditTime = 2300 }, second))
+	assertTrue(not Incremental.includes({ lastEditTime = 1700 }, second))
+end
+
+function tests.incremental_window_is_not_ready_before_cooldown_advances()
+	local window = Incremental.window(2000, 2200, 300)
+	assertTrue(not window.ready)
+	assertEqual(#Incremental.filter({ { lastEditTime = 2050 } }, window), 0)
+end
+
+function tests.file_utils_default_replace_restores_target_on_failure()
+	local files = { ["/source"] = "new", ["/target"] = "old" }
+	local fake = fakeFileUtils(files, function(sourcePath, targetPath)
+		return sourcePath == "/source" and targetPath == "/target"
+	end)
+	withFakeImport("LrFileUtils", fake, function()
+		local ok, err = FileUtils.replaceFile("/source", "/target")
+
+		assertNil(ok)
+		assertTrue(err ~= nil)
+		assertEqual(files["/target"], "old")
+		assertNil(files["/target.bak"])
+	end)
+end
+
+function tests.exporter_reports_missing_renditions_per_photo()
+	local files = { ["/tmp/rendered-a.jpg"] = "a" }
+	local fileUtils = fakeFileUtils(files)
+	fileUtils.createAllDirectories = function()
+		return true
+	end
+	local photoA = {}
+	local photoB = {}
+	local itemA = {
+		photo = { handle = photoA, fileName = "a.jpg" },
+		outputPath = "/out/a.jpg",
+	}
+	local itemB = {
+		photo = { handle = photoB, fileName = "b.jpg" },
+		outputPath = "/out/b.jpg",
+	}
+	withFakeImports({
+		LrFileUtils = fileUtils,
+		LrExportSession = function()
+			return {
+				renditions = function()
+					local yielded = false
+					return function()
+						if yielded then
+							return nil
+						end
+						yielded = true
+						return 1,
+							{
+								photo = photoA,
+								waitForRender = function()
+									return true, "/tmp/rendered-a.jpg"
+								end,
+							}
+					end
+				end,
+			}
+		end,
+	}, function()
+		local outcomes, err = Exporter.exportItems(
+			{ itemA, itemB },
+			{ jpegQuality = 85, longEdgePixels = 3200 }
+		)
+
+		assertTrue(outcomes, err)
+		assertEqual(outcomes[itemA].status, "exported")
+		assertEqual(outcomes[itemB].status, "failed")
+		assertTrue(outcomes[itemB].error:match("no rendition") ~= nil)
+		assertEqual(files["/out/a.jpg"], "a")
+	end)
+end
+
+function tests.state_recovers_from_backup_only()
+	local path = os.tmpname()
+	local state = State.empty()
+	state.photos.a = { outputPath = "/out/a.jpg", status = "exported" }
+	local saved, saveErr = State.save(path, state)
+	assertTrue(saved, saveErr)
+	local removedBackup, removeBackupErr = os.remove(path .. ".bak")
+	if not removedBackup and removeBackupErr then
+		assertTrue(tostring(removeBackupErr):match("No such file") ~= nil)
+	end
+	local moved, moveErr = os.rename(path, path .. ".bak")
+	assertTrue(moved, moveErr)
+
+	local loaded, loadErr, recovery = State.load(path)
+	assertTrue(loaded, loadErr)
+	assertEqual(loaded.photos.a.outputPath, "/out/a.jpg")
+	assertTrue(recovery and recovery.recoveredFromBackup)
+
+	os.remove(path)
+	os.remove(path .. ".bak")
+end
+
+function tests.state_rejects_malformed_photo_records()
+	local state = State.empty()
+	state.photos.a = "invalid"
+
+	local valid, err = State.validate(state)
+
+	assertNil(valid)
+	assertTrue(tostring(err):match("record is not a table") ~= nil)
+end
+
+function tests.state_migrates_version_one_orphaned_records()
+	local loaded, loadErr, loadInfo =
+		State.load("tests/testdata/legacy-state-orphaned.lua")
+
+	assertTrue(loaded, loadErr)
+	assertEqual(loaded.version, 1)
+	assertEqual(loaded.photos.exported.status, "exported")
+	assertEqual(loaded.photos.failed.status, "failed")
+	assertEqual(loaded.photos.orphaned.status, "exported")
+	assertEqual(loaded.photos.orphaned.outputPath, "/out/stable-orphan.jpg")
+	assertNil(loaded.photos.orphaned.orphanedAt)
+	assertEqual(loadInfo.legacyOrphanedRecordsMigrated, 1)
+
+	local path = os.tmpname()
+	loaded.version = 2
+	local saved, saveErr = State.save(path, loaded)
+	assertTrue(saved, saveErr)
+	local reloaded, reloadErr, reloadInfo = State.load(path)
+	assertTrue(reloaded, reloadErr)
+	assertEqual(reloaded.photos.orphaned.status, "exported")
+	assertNil(reloadInfo)
+	os.remove(path)
+	os.remove(path .. ".bak")
+	os.remove(path .. ".tmp")
+end
+
+function tests.state_migrates_version_one_orphaned_records_from_backup()
+	local path = os.tmpname()
+	local removed, removeErr = os.remove(path)
+	assertTrue(removed, removeErr)
+	copyFile("tests/testdata/legacy-state-orphaned.lua", path .. ".bak")
+
+	local loaded, loadErr, loadInfo = State.load(path)
+
+	assertTrue(loaded, loadErr)
+	assertEqual(loaded.photos.orphaned.status, "exported")
+	assertEqual(loadInfo.legacyOrphanedRecordsMigrated, 1)
+	assertTrue(loadInfo.recoveredFromBackup)
+	assertEqual(loadInfo.primaryError, "missing")
+	os.remove(path)
+	os.remove(path .. ".bak")
+end
+
+function tests.state_rejects_unknown_version_one_status()
+	local path = os.tmpname()
+	writeFile(
+		path,
+		'return { version = 1, photos = { a = { status = "pending" } } }\n'
+	)
+
+	local loaded, loadErr = State.load(path)
+
+	assertNil(loaded)
+	assertTrue(tostring(loadErr):match("status is invalid") ~= nil)
+	os.remove(path)
+end
+
+function tests.state_rejects_version_two_orphaned_status()
+	local state = State.empty()
+	state.photos.a = { status = "orphaned" }
+
+	local valid, validationErr = State.validate(state)
+
+	assertNil(valid)
+	assertTrue(tostring(validationErr):match("status is invalid") ~= nil)
+end
+
+function tests.path_containment_requires_directory_boundary()
+	assertTrue(Path.isWithin("/exports/2026/photo.jpg", "/exports"))
+	assertTrue(Path.isWithin("/exports", "/exports/"))
+	assertTrue(Path.isWithin("C:\\exports\\photo.jpg", "C:\\exports"))
+	assertTrue(not Path.isWithin("/exports-other/photo.jpg", "/exports"))
+	assertTrue(not Path.isWithin("/exports/photo.jpg", ""))
 end
 
 local names = {}

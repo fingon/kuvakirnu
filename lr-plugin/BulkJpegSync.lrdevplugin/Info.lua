@@ -5,7 +5,9 @@ return {
 	LrPluginName = "Bulk JPEG Sync",
 	LrPluginInfoProvider = "SettingsProvider.lua",
 	LrInitPlugin = "PluginInit.lua",
+	LrForceInitPlugin = true,
 	LrShutdownPlugin = "PluginShutdown.lua",
+	LrShutdownApp = "AppShutdown.lua",
 	LrLibraryMenuItems = {
 		{
 			title = "Sync JPEGs to Folder",

@@ -85,33 +85,34 @@ end
 local function replaceFile(sourcePath, targetPath, options)
 	options = options or {}
 	local backupPath = options.backupPath
+	local keepBackup = options.keepBackup == true or backupPath ~= nil
 	local backedUp = false
 
 	if fileExists(targetPath) then
-		if backupPath then
-			if fileExists(backupPath) then
-				local deletedBackup, deleteBackupErr = deleteFile(backupPath)
-				if not deletedBackup then
-					return nil, deleteBackupErr
-				end
-			end
-
-			local movedBackup, moveBackupErr = moveFile(targetPath, backupPath)
-			if not movedBackup then
-				return nil, moveBackupErr
-			end
-			backedUp = true
-		else
-			local deletedTarget, deleteTargetErr = deleteFile(targetPath)
-			if not deletedTarget then
-				return nil, deleteTargetErr
+		backupPath = backupPath or targetPath .. ".bak"
+		if fileExists(backupPath) then
+			local deletedBackup, deleteBackupErr = deleteFile(backupPath)
+			if not deletedBackup then
+				return nil, deleteBackupErr
 			end
 		end
+
+		local movedBackup, moveBackupErr = moveFile(targetPath, backupPath)
+		if not movedBackup then
+			return nil, moveBackupErr
+		end
+		backedUp = true
 	end
 
 	local movedReplacement, moveReplacementErr =
 		moveFile(sourcePath, targetPath)
 	if movedReplacement then
+		if backedUp and not keepBackup then
+			local deletedBackup, deleteBackupErr = deleteFile(backupPath)
+			if not deletedBackup then
+				return true, deleteBackupErr
+			end
+		end
 		return true
 	end
 	if not backedUp then
